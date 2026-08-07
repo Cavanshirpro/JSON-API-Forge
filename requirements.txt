@@ -12,7 +12,7 @@ python-dotenv>=1.1,<2.0
 jsonschema>=4.24,<5.0
 PyYAML>=6.0,<7.0
 filelock>=3.18,<4.0
-email-validator>=2.2,<3.0
+email-validator>=2.3.0,<3.0
 
 # Async SQL and database drivers
 sqlalchemy[asyncio]>=2.0.40,<3.0

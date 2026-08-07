@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://json-api-forge.local/schemas/project.schema.json",
+  "title": "JSON API Forge Project",
+  "type": "object",
+  "required": ["slug", "name"],
+  "properties": {
+    "slug": {"type": "string", "pattern": "^[a-zA-Z0-9_-]+$"},
+    "name": {"type": "string"},
+    "version": {"type": "string"},
+    "enabled": {"type": "boolean"},
+    "api_prefix": {"type": "string", "pattern": "^/"},
+    "databases": {"type": "object", "additionalProperties": {"$ref": "#/$defs/database"}},
+    "roles": {"type": "object"},
+    "resources": {"type": "array", "items": {"$ref": "#/$defs/resource"}},
+    "custom_endpoints": {"type": "array", "items": {"type": "object"}},
+    "cache": {"type": "object"},
+    "rate_limit": {"type": "object"},
+    "protection": {"type": "object"},
+    "security": {"type": "object"},
+    "media": {"type": "object"},
+    "features": {"type": "object"}
+  },
+  "$defs": {
+    "database": {
+      "type": "object",
+      "required": ["url"],
+      "properties": {
+        "url": {"type": "string"}, "echo": {"type": "boolean"}, "pool_pre_ping": {"type": "boolean"},
+        "pool_size": {"type": "integer", "minimum": 1}, "max_overflow": {"type": "integer", "minimum": 0},
+        "pool_timeout": {"type": "integer", "minimum": 1}, "pool_recycle": {"type": "integer", "minimum": 1}
+      }
+    },
+    "resource": {
+      "type": "object",
+      "required": ["table", "path"],
+      "properties": {
+        "database": {"type": "string"}, "table": {"type": "string"}, "path": {"type": "string"},
+        "enabled": {"type": "boolean"}, "auto_create": {"type": "boolean"}, "primary_key": {"type": "string"},
+        "columns": {"type": "object"}, "allowed_actions": {"type": "array", "items": {"type": "string"}},
+        "permissions": {"type": "object"}, "readable_fields": {"type": ["array", "null"]},
+        "writable_fields": {"type": ["array", "null"]}, "hidden_fields": {"type": "array"},
+        "allowed_filters": {"type": "array"}, "allowed_sort": {"type": "array"}, "cache": {"type": "object"}
+      }
+    }
+  }
+}

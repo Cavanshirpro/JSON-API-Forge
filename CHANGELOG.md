@@ -1,17 +1,20 @@
 # Changelog
 
-All notable project changes are documented here.
+## [0.2.0] — 2026-08-07
+
+### Added / changed
+- Multiple independent applications under app/<Project>/ with mergeable JSON fragments.
+- Per-project API prefixes, databases, credentials, roles, CORS policies and feature packs.
+- Memory, Redis and tiered L1/L2 caches with generation-based invalidation.
+- Token-bucket rate limiting, per-key traffic budgets and concurrency/backpressure protection.
+- Database connection-pool tuning, readiness checks and batched asynchronous audit writes.
+- Media APIs with streaming upload, MIME/size policies, hashing and deduplication.
+- Messaging, social-media and gaming resource packs.
+- Cursor/keyset pagination and resilient outbound HTTP client foundation.
+
+### Migration note
+- Application configuration moves from the v0.1 single-project model toward `app/<Project>/` with mergeable JSON fragments.
 
 ## [0.1.0] — 2026-08-07
 
-### Added
-- Configuration-driven FastAPI application factory and automatic OpenAPI documentation.
-- Async SQLAlchemy support for PostgreSQL/Supabase, MySQL/MariaDB and SQLite.
-- Multiple database aliases and JSON-declared/reflected resources.
-- API-key authentication, bootstrap administrator key, RBAC, wildcard permissions and role inheritance.
-- Declarative CRUD policies, filtering, sorting, pagination, tenant columns and optional soft deletion.
-- Custom Python hooks for business logic that should not be represented as generic JSON.
-- Request IDs, security headers, CORS, in-memory rate limiting and cPanel Passenger compatibility.
-
-### License
-- Public GitHub-ready release prepared under `LicenseRef-JAF-SASH-1.1`, a source-available self-host license.
+- Initial configuration-driven FastAPI backend foundation with async SQL resources, API keys, RBAC, CRUD policies and cPanel entrypoint.

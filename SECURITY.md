@@ -4,7 +4,8 @@
 
 | Version | Security support |
 |---|---|
-| 0.1.x | ⚠️ Historical release; upgrade to the current release line |
+| 0.2.x | ⚠️ Historical release; upgrade to the current release line |
+| 0.1.x | ❌ Historical |
 
 Historical releases remain available for reproducibility and comparison, but security fixes are expected to target the current supported release line unless the Project Owner states otherwise.
 

@@ -1,0 +1,16 @@
+{
+  "security": {
+    "bootstrap_admin_key": "$env:APP1_BOOTSTRAP_ADMIN_KEY",
+    "api_key_header": "X-API-Key",
+    "jwt_enabled": true,
+    "allow_query_api_key": false,
+    "require_https": false
+  },
+  "roles": {
+    "admin": {"permissions": ["*"]},
+    "plugin": {"permissions": ["notes.list", "notes.read", "system.meta.read"]},
+    "media_uploader": {"permissions": ["media.upload", "media.read"]},
+    "social_client": {"permissions": ["social.*", "media.read", "media.upload"]},
+    "game_client": {"permissions": ["gaming.*", "system.meta.read"]}
+  }
+}

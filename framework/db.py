@@ -42,6 +42,8 @@ def _ensure_sqlite_dir(url: str) -> None:
 
 def _engine_kwargs(db) -> dict[str, Any]:
     kwargs: dict[str, Any] = {"echo": db.echo, "pool_pre_ping": db.pool_pre_ping}
+    if db.isolation_level:
+        kwargs["isolation_level"] = db.isolation_level
     if not db.url.startswith("sqlite"):
         kwargs.update(
             pool_size=db.pool_size,

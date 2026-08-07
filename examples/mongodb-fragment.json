@@ -1,0 +1,31 @@
+{
+  "$schema": "../schemas/fragment.schema.json",
+  "mongo_databases": {
+    "documents": {
+      "uri": "$env:MONGODB_URL",
+      "database": "my_app",
+      "max_pool_size": 100,
+      "min_pool_size": 5,
+      "server_selection_timeout_ms": 5000
+    }
+  },
+  "mongo_resources": [
+    {
+      "database": "documents",
+      "collection": "profiles",
+      "path": "documents/profiles",
+      "writable_fields": ["user_id", "display_name", "settings", "tenant_id"],
+      "allowed_filters": ["user_id", "display_name"],
+      "filter_operators": ["eq", "ne", "in"],
+      "allowed_sort": ["user_id", "display_name"],
+      "tenant_field": "tenant_id",
+      "permissions": {
+        "list": "documents.profiles.list",
+        "read": "documents.profiles.read",
+        "create": "documents.profiles.create",
+        "update": "documents.profiles.update",
+        "delete": "documents.profiles.delete"
+      }
+    }
+  ]
+}

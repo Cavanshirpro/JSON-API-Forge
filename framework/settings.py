@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     apps_dir: Path = Path("app")
     bootstrap_admin_key: str = ""
     jwt_secret: str = ""
-    internal_database_url: str = "sqlite+aiosqlite:///./data/internal-v2.db"
+    internal_database_url: str = "sqlite+aiosqlite:///./data/internal-v3.db"
     primary_database_url: str = "sqlite+aiosqlite:///./data/app.db"
     mysql_database_url: str | None = None
     redis_url: str | None = None

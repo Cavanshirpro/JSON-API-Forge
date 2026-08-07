@@ -1,33 +1,85 @@
 # Production scaling
 
-## Single cPanel process
+## Stage 1 — one process
 
-Use memory cache/limiter for simple installations. PostgreSQL is preferred over SQLite for meaningful concurrency.
+For a small HTTP API:
 
-## Multiple workers
+```text
+FastAPI/Passenger bridge
+  ├─ memory cache
+  ├─ memory limiter
+  └─ PostgreSQL/MySQL
+```
 
-Move cache and rate limiting to Redis. Ensure all workers point to the same internal security DB and Redis. Calculate total DB pool connections before increasing worker count.
+SQLite is useful for development; meaningful concurrent writes should move to a server database.
 
-## Horizontal scaling
+## Stage 2 — multiple processes
 
-For more than one web host:
+Use shared state:
 
-- load balancer / reverse proxy
-- multiple ASGI workers
-- PostgreSQL/MySQL with suitable pooling or external pooler
-- shared Redis
-- S3-compatible media storage + CDN
-- queue workers for slow jobs
-- centralized logs/metrics/traces
+```text
+workers
+  ├─ PostgreSQL/MySQL
+  └─ Redis
+       ├─ cache L2 / generations
+       ├─ distributed cache lock
+       ├─ token bucket rate limit
+       └─ realtime pub/sub
+```
 
-## Hot paths
+All processes must use the same internal security/audit DB if API keys are expected to work everywhere.
 
-Cache stable reads, paginate lists, index all common filters/order fields, avoid N+1 queries, move slow external calls behind resilient clients/queues, and never do media conversion in the request path.
+## Stage 3 — multiple machines
 
-## Failure containment
+Typical shape:
 
-Backpressure and request timeouts stop overload from becoming process collapse. The outbound HTTP helper implements connection pooling, retry/backoff and a circuit breaker so an unhealthy dependency does not consume every request worker indefinitely.
+```text
+CDN/WAF/load balancer
+        ↓
+ASGI web nodes
+  ├─ PostgreSQL / managed SQL / pooler
+  ├─ Redis cluster/service
+  ├─ MongoDB when configured
+  ├─ object storage/CDN
+  └─ durable workers/queues for slow jobs
+```
 
-## Recommended next production modules
+## Realtime
 
-The current runtime is deliberately modular. High-scale deployments should add adapters for Prometheus/OpenTelemetry, distributed jobs (Celery/Arq/Dramatiq), S3/CDN, Alembic migration orchestration and optional distributed stampede locks.
+Forge includes memory and Redis event hubs. Redis allows WebSocket/SSE publishers and subscribers on different workers to see the same channel.
+
+Transport still matters: cPanel's WSGI compatibility bridge is not the preferred deployment for serious WebSocket traffic. Native ASGI should be used for realtime workloads.
+
+## Hot path rules
+
+- Reuse DB and HTTP pools.
+- Cache stable reads.
+- Index filter/sort fields.
+- Prefer cursor pagination for deep streams.
+- Keep SQL RPC results bounded.
+- Keep expensive Python hooks off hot list endpoints.
+- Move heavy media processing to workers.
+- Never create one DB connection or one `AsyncClient` per request.
+- Use idempotency on retry-sensitive writes.
+
+## Metrics
+
+`/metrics` exposes Prometheus-format request counter/latency metrics when enabled. `/health` proves the process is alive; `/ready` actively checks configured SQL databases.
+
+Production monitoring should additionally cover Redis, MongoDB, DB pool exhaustion, queue depth, process RAM/CPU, 429/503/5xx rates, p95/p99 latency and storage usage.
+
+## Local load probe
+
+A small HTTP concurrency probe is included:
+
+```bash
+python scripts/load_test.py \
+  https://api.example.com/api/app1/v1/rpc/economy.balance/123 \
+  --requests 10000 \
+  --concurrency 100 \
+  --api-key 'jf2_...'
+```
+
+It prints status counts, approximate RPS and p50/p95/p99 latency. Start with reads, then use a disposable test database for write benchmarks. Do not aim a write load test at real economy/payment data.
+
+For serious capacity work, also use a distributed tool and monitor DB/Redis/process metrics while the load runs; client-side RPS alone cannot identify the bottleneck.

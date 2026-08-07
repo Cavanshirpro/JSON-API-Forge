@@ -1,0 +1,422 @@
+{
+  "$defs": {
+    "ColumnConfig": {
+      "properties": {
+        "type": {
+          "default": "string",
+          "title": "Type",
+          "type": "string"
+        },
+        "nullable": {
+          "default": true,
+          "title": "Nullable",
+          "type": "boolean"
+        },
+        "primary_key": {
+          "default": false,
+          "title": "Primary Key",
+          "type": "boolean"
+        },
+        "unique": {
+          "default": false,
+          "title": "Unique",
+          "type": "boolean"
+        },
+        "index": {
+          "default": false,
+          "title": "Index",
+          "type": "boolean"
+        },
+        "default": {
+          "default": null,
+          "title": "Default"
+        },
+        "max_length": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Length"
+        }
+      },
+      "title": "ColumnConfig",
+      "type": "object"
+    },
+    "CustomEndpointConfig": {
+      "properties": {
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "method": {
+          "default": "GET",
+          "title": "Method",
+          "type": "string"
+        },
+        "permission": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Permission"
+        },
+        "handler": {
+          "title": "Handler",
+          "type": "string"
+        },
+        "summary": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Summary"
+        }
+      },
+      "required": [
+        "path",
+        "handler"
+      ],
+      "title": "CustomEndpointConfig",
+      "type": "object"
+    },
+    "DatabaseConfig": {
+      "properties": {
+        "url": {
+          "title": "Url",
+          "type": "string"
+        },
+        "echo": {
+          "default": false,
+          "title": "Echo",
+          "type": "boolean"
+        },
+        "pool_pre_ping": {
+          "default": true,
+          "title": "Pool Pre Ping",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "title": "DatabaseConfig",
+      "type": "object"
+    },
+    "RateLimitConfig": {
+      "properties": {
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "requests": {
+          "default": 120,
+          "title": "Requests",
+          "type": "integer"
+        },
+        "window_seconds": {
+          "default": 60,
+          "title": "Window Seconds",
+          "type": "integer"
+        },
+        "backend": {
+          "default": "memory",
+          "title": "Backend",
+          "type": "string"
+        }
+      },
+      "title": "RateLimitConfig",
+      "type": "object"
+    },
+    "ResourceConfig": {
+      "properties": {
+        "database": {
+          "default": "primary",
+          "title": "Database",
+          "type": "string"
+        },
+        "table": {
+          "title": "Table",
+          "type": "string"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "auto_create": {
+          "default": false,
+          "title": "Auto Create",
+          "type": "boolean"
+        },
+        "columns": {
+          "additionalProperties": {
+            "$ref": "#/$defs/ColumnConfig"
+          },
+          "title": "Columns",
+          "type": "object"
+        },
+        "primary_key": {
+          "default": "id",
+          "title": "Primary Key",
+          "type": "string"
+        },
+        "allowed_actions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Actions",
+          "type": "array"
+        },
+        "permissions": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Permissions",
+          "type": "object"
+        },
+        "readable_fields": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Readable Fields"
+        },
+        "writable_fields": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Writable Fields"
+        },
+        "hidden_fields": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Hidden Fields",
+          "type": "array"
+        },
+        "default_limit": {
+          "default": 50,
+          "title": "Default Limit",
+          "type": "integer"
+        },
+        "max_limit": {
+          "default": 200,
+          "title": "Max Limit",
+          "type": "integer"
+        },
+        "allowed_filters": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Filters",
+          "type": "array"
+        },
+        "allowed_sort": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Sort",
+          "type": "array"
+        },
+        "soft_delete_field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Soft Delete Field"
+        },
+        "tenant_field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tenant Field"
+        }
+      },
+      "required": [
+        "table",
+        "path"
+      ],
+      "title": "ResourceConfig",
+      "type": "object"
+    },
+    "RoleConfig": {
+      "properties": {
+        "permissions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Permissions",
+          "type": "array"
+        },
+        "inherits": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Inherits",
+          "type": "array"
+        }
+      },
+      "title": "RoleConfig",
+      "type": "object"
+    },
+    "SecurityConfig": {
+      "properties": {
+        "api_key_header": {
+          "default": "X-API-Key",
+          "title": "Api Key Header",
+          "type": "string"
+        },
+        "bootstrap_admin_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bootstrap Admin Key"
+        },
+        "jwt_enabled": {
+          "default": true,
+          "title": "Jwt Enabled",
+          "type": "boolean"
+        },
+        "jwt_exp_minutes": {
+          "default": 60,
+          "title": "Jwt Exp Minutes",
+          "type": "integer"
+        },
+        "allow_query_api_key": {
+          "default": false,
+          "title": "Allow Query Api Key",
+          "type": "boolean"
+        }
+      },
+      "title": "SecurityConfig",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "name": {
+      "default": "JSON API Forge",
+      "title": "Name",
+      "type": "string"
+    },
+    "version": {
+      "default": "0.1.0",
+      "title": "Version",
+      "type": "string"
+    },
+    "api_prefix": {
+      "default": "/api/v1",
+      "title": "Api Prefix",
+      "type": "string"
+    },
+    "docs_enabled": {
+      "default": true,
+      "title": "Docs Enabled",
+      "type": "boolean"
+    },
+    "audit_enabled": {
+      "default": true,
+      "title": "Audit Enabled",
+      "type": "boolean"
+    },
+    "cors_origins": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Cors Origins",
+      "type": "array"
+    },
+    "databases": {
+      "additionalProperties": {
+        "$ref": "#/$defs/DatabaseConfig"
+      },
+      "title": "Databases",
+      "type": "object"
+    },
+    "security": {
+      "$ref": "#/$defs/SecurityConfig"
+    },
+    "rate_limit": {
+      "$ref": "#/$defs/RateLimitConfig"
+    },
+    "roles": {
+      "additionalProperties": {
+        "$ref": "#/$defs/RoleConfig"
+      },
+      "title": "Roles",
+      "type": "object"
+    },
+    "resources": {
+      "items": {
+        "$ref": "#/$defs/ResourceConfig"
+      },
+      "title": "Resources",
+      "type": "array"
+    },
+    "custom_endpoints": {
+      "items": {
+        "$ref": "#/$defs/CustomEndpointConfig"
+      },
+      "title": "Custom Endpoints",
+      "type": "array"
+    }
+  },
+  "required": [
+    "databases"
+  ],
+  "title": "AppConfig",
+  "type": "object"
+}

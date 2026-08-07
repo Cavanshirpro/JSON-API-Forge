@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../schemas/fragment.schema.json",
   "custom_endpoints": [
     {
       "path": "plugin/ping",

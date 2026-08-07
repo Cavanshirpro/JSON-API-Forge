@@ -1,49 +1,112 @@
-# Performance and cache
+# Performance, cache and overload protection
 
 ## Database pools
 
-PostgreSQL/MySQL engines support `pool_size`, `max_overflow`, `pool_timeout`, `pool_recycle` and `pool_pre_ping`. Do not set huge pools blindly: pool capacity must fit the database server's maximum connections across **all** web workers.
+Every SQL database alias has its own SQLAlchemy async engine and pool settings:
 
-Approximate worst-case connections:
-
-```text
-workers × projects × databases × (pool_size + max_overflow)
+```json
+{
+  "pool_size": 20,
+  "max_overflow": 40,
+  "pool_timeout": 10,
+  "pool_recycle": 1800,
+  "pool_pre_ping": true
+}
 ```
 
-Tune from real measurements.
-
-## Cache modes
-
-- `memory` — fastest and simplest; cache is private to one worker.
-- `redis` — shared across workers/servers.
-- `tiered` — local L1 for hot values plus Redis L2/shared generation counters.
-
-## Generation invalidation
-
-Every resource has a cache namespace such as `app1:primary:notes`. Cache keys contain its current generation:
+Do not multiply these values blindly. Approximate maximum possible SQL connections is influenced by:
 
 ```text
-app1:primary:notes:g14:<query-hash>
+processes × projects × database aliases × (pool_size + max_overflow)
 ```
 
-Create/update/delete increments generation from 14 to 15. No wildcard scan or mass DELETE is required. Old generation keys expire by TTL.
+The DB server, cPanel account and network usually have lower real limits than the application can theoretically request.
 
-## Stampede control
+## Cache backends
 
-Within a worker, simultaneous misses for the same key share a lock so only one request loads the DB and repopulates the value. For very large distributed deployments, add a Redis distributed lock if cross-worker stampedes become measurable.
+- `memory`: process-local L1 cache.
+- `redis`: shared cache.
+- `tiered`: memory L1 + Redis L2.
 
-## Backpressure
+For multi-process Passenger/Uvicorn deployments, Redis is the shared source for cache generations.
 
-`max_concurrent_requests` prevents unlimited work from entering expensive handlers. Requests that cannot enter before `max_queue_wait_seconds` receive 503. This is safer than accepting unbounded work until memory or DB connections are exhausted.
+## Generation-based invalidation
+
+Cache keys include a namespace generation:
+
+```text
+app1:primary:economy_accounts:g18:<hash>
+```
+
+A mutation increments the generation. New requests no longer address old keys; the old generation expires naturally. This avoids Redis `SCAN`/wildcard deletion on hot resources.
+
+RPCs and data sources have independent namespaces. Mutating RPCs can explicitly invalidate both resource paths and other operation names.
+
+## Stampede protection
+
+Forge protects a cold key in two layers:
+
+1. per-process asyncio lock;
+2. Redis distributed lock when Redis/tiered cache is used.
+
+That reduces the “100 workers all miss and all query PostgreSQL” pattern.
+
+## Stale-while-revalidate
+
+`cache.stale_ttl_seconds` can keep an expired value temporarily usable while one task refreshes it:
+
+```json
+{
+  "cache": {
+    "default_ttl_seconds": 30,
+    "stale_ttl_seconds": 15
+  }
+}
+```
+
+Timeline:
+
+```text
+0..30 s   fresh → return immediately
+30..45 s  stale → return immediately + refresh in background
+>45 s     miss → wait for loader
+```
+
+Set stale TTL to `0` for values that must never knowingly return old data, such as authoritative balances immediately after mutation.
+
+## Fail-open cache
+
+`cache.fail_open:true` means a cache failure should not automatically make a healthy database API unavailable. Forge can fall through to the loader when cache reads/sets fail.
+
+Tradeoff: if a generation bump fails during a Redis outage, another process may still possess an older cache entry until its TTL expires. For strict-consistency endpoints, disable caching or configure fail-closed behavior.
 
 ## Rate limiting
 
-The limiter is token-bucket based and supports burst capacity. Use Redis when there is more than one worker/process/server.
+Memory or Redis token buckets support steady rate + burst. API keys can override project defaults.
 
-## Audit path
+## Backpressure
 
-Audit events enter a bounded queue and are inserted in batches. If the queue fills, audit events may be dropped rather than letting observability exhaust application memory. Monitor `AuditWriter.dropped` in a future metrics adapter.
+`max_concurrent_requests` is a semaphore around project requests. Requests waiting longer than `max_queue_wait_seconds` can be rejected instead of consuming unlimited memory and DB waiters.
 
-## Pagination under large datasets
+This protects the process, but values should match actual CPU/RAM/DB capacity.
 
-Resources can choose `pagination_mode: "cursor"` and a `cursor_field`. Cursor/keyset pagination avoids the increasing database cost of very large SQL OFFSET values. The messaging message stream and social post stream generated by the feature packs use ID cursors by default.
+## Cursor pagination
+
+Use cursor/keyset mode on monotonically ordered high-volume tables. Large SQL OFFSET values become progressively more expensive.
+
+## Audit hot path
+
+Audit events go to a bounded async queue and are batch-written. Audit DB latency therefore does not normally sit directly in every response path.
+
+## External HTTP
+
+The outbound HTTP service uses a long-lived connection pool, timeout, retry/backoff and a circuit breaker. This reduces socket churn and cascading failures when an upstream API is slow.
+
+
+## Per-resource stale policy
+
+The global `cache.stale_ttl_seconds` is only a default. SQL/Mongo resource cache, RPC cache and data-source config can override stale TTL. This lets a social feed use stale-while-revalidate while an economy balance explicitly uses `stale_ttl_seconds:0`.
+
+## Rate-limiter failure policy
+
+`rate_limit.fail_open:false` is the safer default for public abuse protection: a Redis limiter outage returns a temporary `503` instead of silently disabling limits. Set `fail_open:true` only when availability is more important than temporary enforcement and the downstream DB/API can absorb the extra traffic.

@@ -1,20 +1,24 @@
 # Changelog
 
-## [0.2.0] — 2026-08-07
+## [0.3.0] — 2026-08-07
 
 ### Added / changed
-- Multiple independent applications under app/<Project>/ with mergeable JSON fragments.
-- Per-project API prefixes, databases, credentials, roles, CORS policies and feature packs.
-- Memory, Redis and tiered L1/L2 caches with generation-based invalidation.
-- Token-bucket rate limiting, per-key traffic budgets and concurrency/backpressure protection.
-- Database connection-pool tuning, readiness checks and batched asynchronous audit writes.
-- Media APIs with streaming upload, MIME/size policies, hashing and deduplication.
-- Messaging, social-media and gaming resource packs.
-- Cursor/keyset pagination and resilient outbound HTTP client foundation.
+- Declarative SQL/RPC operations with bind parameters, transactions, row-count guards and idempotency.
+- JSON, YAML and CSV file data sources plus controlled outbound HTTP/API gateway sources.
+- Expanded declarative FastAPI endpoints, parameters, dependencies, validation, response types and OpenAPI metadata.
+- WebSocket and Server-Sent Events channels with memory or Redis pub/sub backends.
+- Async MongoDB resources using PyMongo AsyncMongoClient and external JWKS/Supabase Auth validation.
+- Distributed cache locks, tiered cache, operation invalidation, rate limits and overload protection.
+- Media quotas and signed temporary URLs, Prometheus metrics and stronger readiness checks.
+- Generic async Python client SDK plus a Discord economy/PostgreSQL example.
 
 ### Migration note
-- Application configuration moves from the v0.1 single-project model toward `app/<Project>/` with mergeable JSON fragments.
+- v0.3.0 keeps the v0.2 multi-application model and expands it with declarative operations, data sources, realtime, MongoDB/JWKS and broader FastAPI configuration surfaces. See `docs/20-Upgrading-from-v0.2.md`.
+
+## [0.2.0] — 2026-08-07
+
+- Added multi-project JSON fragments, Redis/tiered caches, token-bucket rate limiting, overload protection, media, messaging/social/gaming packs and production scaling controls.
 
 ## [0.1.0] — 2026-08-07
 
-- Initial configuration-driven FastAPI backend foundation with async SQL resources, API keys, RBAC, CRUD policies and cPanel entrypoint.
+- Initial configuration-driven FastAPI backend foundation.

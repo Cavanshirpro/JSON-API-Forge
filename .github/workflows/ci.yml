@@ -29,7 +29,8 @@ jobs:
           pip install -r requirements-dev.txt
       - name: Validate configuration
         run: |
-          python scripts/validate_config.py
+          python forge.py validate
+          python forge.py routes
       - name: Compile Python sources
         run: python -m compileall -q framework app
       - name: Test

@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../schemas/fragment.schema.json",
   "databases": {
     "primary": {
       "url": "$env:APP1_DATABASE_URL:-sqlite+aiosqlite:///./data/app1.db",

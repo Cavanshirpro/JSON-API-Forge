@@ -27,8 +27,9 @@ Never commit the generated `.env` file.
 ## Validate changes
 
 ```bash
-python scripts/validate_config.py
-python -m compileall -q framework app
+python forge.py validate
+python forge.py routes
+python -m compileall -q framework app clients examples
 pytest -q
 ```
 

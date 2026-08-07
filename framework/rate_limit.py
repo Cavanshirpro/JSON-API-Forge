@@ -36,6 +36,9 @@ class MemoryRateLimiter:
                 raise HTTPException(status_code=429, detail="Rate limit exceeded", headers={"Retry-After": str(retry)})
             bucket.tokens -= 1.0
 
+    async def ping(self) -> bool:
+        return True
+
     async def close(self) -> None:
         self._buckets.clear()
 
@@ -77,6 +80,9 @@ class RedisRateLimiter:
         if int(allowed) != 1:
             retry = max(1, int((1.0 - float(tokens)) / rate))
             raise HTTPException(status_code=429, detail="Rate limit exceeded", headers={"Retry-After": str(retry)})
+
+    async def ping(self) -> bool:
+        return bool(await self.redis.ping())
 
     async def close(self) -> None:
         await self.redis.aclose()

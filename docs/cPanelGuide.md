@@ -1,104 +1,153 @@
 # cPanel deployment guide
 
-JSON API Forge is an ASGI application. Many cPanel Python deployments are hosted through Phusion Passenger; CloudLinux Python Selector also uses Passenger. The repository includes `passenger_wsgi.py`, which uses `a2wsgi` to bridge the FastAPI ASGI app into Passenger's WSGI-style entrypoint.
+JSON API Forge is an **ASGI** FastAPI application. cPanel's standard Application Manager is built around Phusion Passenger; cPanel's current documentation describes Passenger application registration and Python WSGI deployment. This repository therefore includes `passenger_wsgi.py`, using `a2wsgi` as an ASGI→WSGI compatibility bridge for ordinary HTTP APIs.
 
-> WebSockets and other long-lived ASGI-native features are not a good fit for this bridge. For real-time messaging/game sockets, use Uvicorn/Hypercorn behind a reverse proxy on a VPS or a hosting plan that exposes native ASGI.
+> Passenger/WSGI mode is not the preferred runtime for WebSockets and other long-lived ASGI connections. If realtime messaging, SSE at scale, many workers or high concurrency matters, use native Uvicorn/Hypercorn behind Nginx/Apache reverse proxy on a VPS/platform that supports ASGI directly.
 
-## 1. Upload
+Official references checked for this guide (August 2026):
 
-Upload and extract the project to a directory such as:
+- cPanel “Using Passenger Applications”: `https://docs.cpanel.net/knowledge-base/web-services/using-passenger-applications/`
+- cPanel “Application Manager”: `https://docs.cpanel.net/cpanel/software/application-manager/`
+- cPanel “How to Install a Python WSGI Application”: `https://docs.cpanel.net/knowledge-base/web-services/how-to-install-a-python-wsgi-application/`
+
+## 1. Upload and extract
+
+Recommended layout:
 
 ```text
 /home/CPANEL_USER/json-api-forge/
+├── framework/
+├── app/
+├── docs/
+├── main.py
+├── passenger_wsgi.py
+├── requirements.txt
+└── .env
 ```
 
-Do not place `.env` in `public_html` if you can avoid it.
+Avoid placing `.env` under `public_html`.
 
-## 2. Create the Python application
+## 2. Select Python
 
-Depending on the host, the cPanel UI may show **Setup Python App** (CloudLinux Python Selector) or an application/Passenger manager. Create an app rooted at the extracted project directory. Choose the newest Python 3 version offered by your host that is compatible with the requirements.
-
-Use `passenger_wsgi.py` as the startup file/entrypoint when the UI requests one. The callable exported by the file is named `application`.
+Use the newest supported Python 3 version provided by the host that satisfies the dependency versions. Create/activate the virtual environment provided by Application Manager/Setup Python App or your shell.
 
 ## 3. Install dependencies
 
-Open the terminal supplied by cPanel or activate the virtual environment shown by Setup Python App, then run:
-
 ```bash
 cd ~/json-api-forge
+pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-CloudLinux installations can also expose a requirements-file installation operation through their Python Selector tooling.
+If your host does not offer Redis, leave cache/rate-limit/realtime on memory mode and understand that those states are process-local.
 
-## 4. Configure environment
-
-Copy the example:
+## 4. Configure `.env`
 
 ```bash
 cp .env.example .env
 ```
 
-Set strong values for:
+Set real secrets and DB URLs:
 
 ```env
-APP1_BOOTSTRAP_ADMIN_KEY=...
-APP2_BOOTSTRAP_ADMIN_KEY=...
-JWT_SECRET=...
-INTERNAL_DATABASE_URL=...
-APP1_DATABASE_URL=...
-APP2_DATABASE_URL=...
-REDIS_URL=...
+APP_ENV=production
+APP1_BOOTSTRAP_ADMIN_KEY=<long-random-secret>
+JWT_SECRET=<long-random-secret>
+APP1_DATABASE_URL=postgresql+asyncpg://user:password@host:5432/database
+INTERNAL_DATABASE_URL=postgresql+asyncpg://user:password@host:5432/forge_internal
+REDIS_URL=redis://127.0.0.1:6379/0
 ```
 
-For cPanel production, prefer PostgreSQL/MySQL over SQLite when traffic is concurrent. Use database credentials created from the cPanel database tools or an external managed database.
+A dedicated internal PostgreSQL database/schema is preferable to SQLite when Passenger may start multiple processes.
 
-## 5. Redis/cache choice
+## 5. Choose cPanel-safe project settings
 
-Many shared cPanel plans do not include a private Redis service. If Redis is unavailable, set each project's cache/rate-limit backend to `memory`. That is correct only for a single process/worker. If your host runs several independent Passenger processes, memory rate limits and caches are not globally consistent.
+For a shared host without Redis:
 
-When Redis is available, use `tiered` cache and `redis` rate limiting for shared state across workers.
+```json
+{
+  "cache": {"backend":"memory"},
+  "rate_limit": {"backend":"memory"},
+  "realtime": {"backend":"memory"}
+}
+```
 
-## 6. Validate before restart
+For a host/VPS with Redis:
+
+```json
+{
+  "cache": {"backend":"tiered"},
+  "rate_limit": {"backend":"redis"},
+  "realtime": {"backend":"redis"}
+}
+```
+
+Redis mode is required when independent workers must share rate-limit buckets, cache generations and realtime channels.
+
+## 6. Register the application
+
+In cPanel Application Manager, register the extracted application path and target domain/base URI. Use `passenger_wsgi.py` as the WSGI startup file when the UI/provider expects one. The exported callable is named `application`.
+
+Some hosts expose the same concept through CloudLinux “Setup Python App”. Field names differ by provider; the key requirements are the correct application root, virtualenv and Passenger entrypoint.
+
+## 7. Validate before restart
 
 ```bash
-python scripts/validate_config.py
+python forge.py validate
+python forge.py routes
 python -m compileall framework app main.py passenger_wsgi.py
+pytest -q
 ```
 
-If your environment permits local execution, you can also test with:
+You can locally test native ASGI with:
 
 ```bash
 python run.py
 ```
 
-## 7. Restart Passenger
+## 8. Restart Passenger
 
-Use the cPanel application's Restart action. Some Passenger environments also restart after touching the conventional restart marker used by the hosting provider; prefer the UI unless your provider documents another method.
+Use the cPanel restart action. cPanel's command-line WSGI guide also documents Passenger's conventional `tmp/restart.txt` mechanism, but use the hosting UI/provider instructions when available.
 
-## 8. Verify
-
-Open:
+## 9. Verify
 
 ```text
-https://your-domain.example/health
-https://your-domain.example/ready
-https://your-domain.example/docs
+https://api.example.com/health
+https://api.example.com/ready
+https://api.example.com/docs
+https://api.example.com/api/app1/v1/_docs
 ```
 
-App routes remain separated:
+## 10. Resource sizing
+
+Shared hosting accounts often have strict RAM/CPU/process caps. Do **not** assume these values should all be large:
 
 ```text
-/api/app1/v1/...
-/api/app2/v1/...
+max_concurrent_requests
+DB pool_size
+DB max_overflow
+HTTP max connections
+Redis connections
 ```
 
-## 9. Production notes
+A 20-connection DB pool per process with 10 Passenger processes can imply roughly 200 potential DB connections. Calculate pool limits across processes and compare them with the PostgreSQL/MySQL server's connection limit.
 
-- Set exact CORS origins and trusted hosts.
-- Turn on HTTPS enforcement only after your proxy headers/scheme are correct.
-- Never expose database or Redis ports publicly.
-- Keep the bootstrap key private and issue ordinary per-plugin API keys.
-- If the cPanel account has strict CPU/RAM/process limits, lower DB pool sizes and concurrency limits. Increasing them beyond the hosting account's real resources causes worse failure modes, not more throughput.
-- Large media files should eventually move to object storage/CDN; local cPanel disk is suitable only for modest workloads.
-- For high-volume WebSockets, background queues, video transcoding, many workers or horizontal scaling, move the runtime to a VPS/container platform and keep cPanel only for unrelated site hosting if desired.
+## 11. Realtime warning
+
+The package contains WebSocket and SSE endpoints, and Redis can make their event state cross-worker. That does not make a WSGI bridge an ideal transport for WebSockets. Use native ASGI for serious realtime workloads.
+
+## 12. Recommended upgrade path
+
+```text
+Small HTTP API
+cPanel Passenger + PostgreSQL
+        ↓
+More workers
+cPanel/VPS + PostgreSQL + Redis
+        ↓
+Heavy API / realtime
+Nginx → Uvicorn workers → Forge
+             ├─ PostgreSQL
+             ├─ Redis
+             └─ object storage/CDN
+```

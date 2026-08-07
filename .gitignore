@@ -1,0 +1,40 @@
+.env
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+data/
+logs/
+*.log
+.DS_Store
+
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Databases / runtime artifacts
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+media/
+coverage.xml
+.coverage
+htmlcov/
+
+# IDE / OS
+.idea/
+.vscode/*.local.json
+Thumbs.db
+
+# Build / packaging
+build/
+dist/
+*.egg-info/

@@ -3,6 +3,10 @@
     {
       "fileMatch": ["/app/*/app.json", "/app/*/manifest.json"],
       "url": "./schemas/project.schema.json"
+    },
+    {
+      "fileMatch": ["/app/*/config/*.json"],
+      "url": "./schemas/fragment.schema.json"
     }
   ]
 }

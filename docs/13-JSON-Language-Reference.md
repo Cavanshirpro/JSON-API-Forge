@@ -1,6 +1,6 @@
 # JSON language reference
 
-This file is a map of the current v0.3 declarative surface. Exact field types/defaults are also available from `schemas/project.schema.json` and `schemas/fragment.schema.json`.
+This file is a map of the current v0.4 declarative surface. Exact field types/defaults are also available from `schemas/project.schema.json` and `schemas/fragment.schema.json`.
 
 ## Top-level project keys
 
@@ -48,9 +48,10 @@ uri, database, max_pool_size, min_pool_size, server_selection_timeout_ms
 
 ```text
 api_key_header
-bootstrap_admin_key
-jwt_enabled
+bootstrap_enabled, bootstrap_admin_key, bootstrap_one_time
+jwt_enabled                       # default: false in v0.4
 jwt_provider: local_hs256 | jwks
+jwt_secret                        # project-scoped local HS256 secret; prefer $env:...
 jwt_exp_minutes
 jwt_jwks_url, jwt_issuer, jwt_audience, jwt_algorithms
 jwt_subject_claim, jwt_roles_claim, jwt_permissions_claim
@@ -58,7 +59,7 @@ jwt_tenant_claim, jwt_project_claim
 jwks_cache_ttl_seconds, jwks_timeout_seconds
 allow_query_api_key, allow_websocket_query_api_key
 require_https, allowed_ips, denied_ips
-idempotency_header, idempotency_pending_ttl_seconds
+idempotency_header
 ```
 
 ## `cache`
@@ -78,10 +79,12 @@ Resource cache can override enable/TTL values, including `stale_ttl_seconds` (se
 
 ```text
 enabled
-requests
-window_seconds
+requests, window_seconds, burst          # principal-global primary budget
+route_requests, route_window_seconds, route_burst
 backend: memory | redis
-burst
+memory_max_buckets
+memory_idle_ttl_seconds
+memory_cleanup_interval_seconds
 fail_open
 ```
 
@@ -135,7 +138,8 @@ Similar CRUD policy for a Mongo collection: database alias, collection/path, act
 Named server-owned SQL/RPC:
 
 ```text
-name, path, method, database, permission
+name, path, method, database
+public, permission
 transaction
 input_schema, parameters
 statements[]
@@ -163,10 +167,12 @@ require_rowcount_min / max
 ```text
 name, enabled, path
 type: json_file | yaml_file | csv_file | static | http
+public, public_write
 permission / read_permission / write_permission
 parameters
 file / data / url
 method, headers, timeout_seconds, retries
+retry_non_idempotent              # default false; POST/PATCH retries require explicit opt-in
 writable, id_field, max_items
 cache_ttl_seconds, stale_ttl_seconds
 file_lock_timeout_seconds
@@ -185,7 +191,7 @@ Trusted FastAPI dependency imports:
 ## `custom_endpoints`
 
 ```text
-path, method, permission, handler
+path, method, public, permission, handler
 summary, description, tags, deprecated, include_in_schema
 input_schema
 input_mode: json | form | text | bytes | none
@@ -200,9 +206,11 @@ Response kinds: `json`, `text`, `html`, `redirect`, `stream`, `file`, `empty`.
 
 ```text
 name, path
+public_publish, public_subscribe
 publish_permission, subscribe_permission
 websocket_enabled, sse_enabled
 max_message_bytes, queue_size, heartbeat_seconds
+websocket_message_requests, websocket_message_window_seconds, websocket_message_burst
 ```
 
 Use `realtime.backend:"redis"` for cross-worker delivery.
@@ -211,19 +219,19 @@ Use `realtime.backend:"redis"` for cross-worker delivery.
 
 ```text
 enabled
-backend: local | s3
+backend: local
 local_directory
 max_upload_bytes, max_batch_files, max_owner_bytes
 allowed_mime_types, allowed_extensions
 public
 upload/read/delete/admin permissions
 owner_delete_only
-deduplicate
+deduplicate, deduplicate_scope: owner | project
 signed_urls_enabled, signed_url_ttl_seconds
 post_upload_hooks
 ```
 
-The current runtime implements `local`; selecting `s3` intentionally raises until a real adapter is supplied.
+v0.4 exposes only the implemented `local` backend. Future object-storage adapters will become valid configuration only when an implementation and tests exist. `deduplicate_scope` defaults to `owner` so a duplicate upload does not reveal another principal's existing metadata. API metadata responses deliberately omit the internal `storage_key`; owner identity is only included for the owner or a caller with `media.admin`.
 
 ## `features`
 
@@ -255,3 +263,21 @@ package.module:function
 ```
 
 Only server owners should control these values.
+
+
+## v0.4 strictness rules
+
+All configuration objects reject unknown properties. For private-capable endpoint types, omission is not treated as anonymous access: define a permission or an explicit public flag. Generated schemas are authoritative for exact types/defaults and should be refreshed with `forge schema`. Cross-field/merged-project rules are additionally checked by `forge validate` and `forge doctor`.
+
+## v0.4 security-sensitive defaults
+
+Several defaults are intentionally conservative:
+
+- `security.jwt_enabled` defaults to `false`; enable JWT only when the project has an issuer contract.
+- for `local_hs256`, prefer `security.jwt_secret: "$env:APP_NAME_JWT_SECRET"`; a global `JWT_SECRET` remains a compatibility fallback and `forge doctor --production` warns about shared-secret isolation;
+- operations, custom endpoints and data-source reads are private unless they declare a permission or explicit `public:true`;
+- writable data sources require a write permission or explicit `public_write:true`;
+- event publish/subscribe directions each require a permission or their own explicit public flag;
+- automatic retries for `POST`/`PATCH` HTTP data sources are disabled unless `retry_non_idempotent:true` is explicitly configured.
+
+These defaults are part of the runtime contract, not merely documentation conventions.

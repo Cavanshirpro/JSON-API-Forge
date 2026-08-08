@@ -3,26 +3,89 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from datetime import datetime, timedelta, timezone
+from time import monotonic
 from typing import Any
-from datetime import datetime, timezone
 
 from fastapi import HTTPException, Request
-from sqlalchemy import delete, insert, select, text, update
+from sqlalchemy import Column, DateTime, Index, Integer, MetaData, String, Table, Text, UniqueConstraint, delete, insert, inspect, select, text, update
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from .config import OperationConfig, SQLStatementConfig
-from .security import Principal, idempotency_table
+from .security import Principal
 from .validation import validate_json_schema
 
 _DANGEROUS = re.compile(r"\b(DROP|ALTER|TRUNCATE|CREATE|GRANT|REVOKE|COPY|ATTACH|DETACH|VACUUM|PRAGMA|DO)\b", re.I)
 _FIRST_WORD = re.compile(r"^\s*([A-Za-z]+)")
 
+_operation_meta = MetaData()
+operation_idempotency_table = Table(
+    "_forge_v4_operation_idempotency",
+    _operation_meta,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("project_slug", String(80), nullable=False, index=True),
+    Column("operation_name", String(120), nullable=False, index=True),
+    Column("key_hash", String(64), nullable=False),
+    Column("request_hash", String(64), nullable=False),
+    Column("state", String(16), nullable=False, default="pending", index=True),
+    Column("response_json", Text, nullable=True),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    UniqueConstraint("project_slug", "operation_name", "key_hash", name="uq_forge_v4_operation_idempotency"),
+)
+Index(
+    "ix_forge_v4_idempotency_retention",
+    operation_idempotency_table.c.project_slug,
+    operation_idempotency_table.c.operation_name,
+    operation_idempotency_table.c.updated_at,
+)
+
+# Retention cleanup is opportunistic and process-local. Every request still removes an
+# expired row for its own key so TTL reuse is exact; this schedule only prevents the
+# ledger from growing forever when callers continuously generate new keys.
+_idempotency_cleanup_after: dict[tuple[str, str], float] = {}
+
+def _idempotency_cleanup_due(project_slug: str, operation: OperationConfig) -> bool:
+    key = (project_slug, operation.name)
+    now = monotonic()
+    if now < _idempotency_cleanup_after.get(key, 0.0):
+        return False
+    # Frequent enough to keep retention meaningful without adding a range DELETE to
+    # every hot-path request. Long TTLs never wait more than ten minutes.
+    interval = min(600.0, max(60.0, operation.idempotency_ttl_seconds / 10.0))
+    _idempotency_cleanup_after[key] = now + interval
+    return True
+
+
+
+async def init_operation_idempotency(engine: AsyncEngine, *, mode: str = "create") -> None:
+    """Create or validate the business-database idempotency ledger."""
+    if mode == "create":
+        async with engine.begin() as conn:
+            await conn.run_sync(_operation_meta.create_all)
+        return
+    if mode != "validate":
+        raise RuntimeError(f"Unsupported support schema mode: {mode}")
+    async with engine.connect() as conn:
+        exists = await conn.run_sync(lambda sync_conn: inspect(sync_conn).has_table(operation_idempotency_table.name))
+    if not exists:
+        raise RuntimeError(
+            f"Missing idempotency support table {operation_idempotency_table.name!r}; run `forge migrate`."
+        )
+
 
 def _safe_sql(stmt: SQLStatementConfig, allow_ddl: bool) -> None:
+    """Conservative guardrail for trusted declarative SQL.
+
+    This is intentionally *not* a SQL sandbox or parser. Operation definitions are
+    trusted server configuration. User-controlled values must enter through bound
+    parameters, never by constructing SQL text from request data.
+    """
+
     sql = stmt.sql.strip()
     if not sql:
         raise RuntimeError("Empty SQL statement")
-    # A trailing semicolon is harmless; embedded semicolons/multi-statements are not accepted.
     body = sql[:-1] if sql.endswith(";") else sql
     if ";" in body or "--" in body or "/*" in body or "*/" in body:
         raise RuntimeError("SQL operations must contain one parameterized statement and no SQL comments")
@@ -31,7 +94,6 @@ def _safe_sql(stmt: SQLStatementConfig, allow_ddl: bool) -> None:
     match = _FIRST_WORD.search(body)
     verb = match.group(1).upper() if match else ""
     if stmt.mode in {"fetch_one", "fetch_all", "scalar"} and verb not in {"SELECT", "WITH", "SHOW", "EXPLAIN"}:
-        # RETURNING writes are deliberately configured as execute in this framework.
         raise RuntimeError(f"mode={stmt.mode} only accepts read statements; got {verb or 'unknown'}")
     if stmt.mode == "execute" and verb in {"DROP", "ALTER", "TRUNCATE", "GRANT", "REVOKE"} and not allow_ddl:
         raise RuntimeError(f"Administrative SQL verb {verb} is disabled")
@@ -109,9 +171,25 @@ async def _execute_on_connection(conn, operation: OperationConfig, *, body: Any,
         if statement.mode == "execute":
             rowcount = max(result.rowcount or 0, 0)
             if statement.require_rowcount_min is not None and rowcount < statement.require_rowcount_min:
-                raise HTTPException(status_code=409, detail={"operation": operation.name, "reason": "rowcount_below_minimum", "minimum": statement.require_rowcount_min, "actual": rowcount})
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "operation": operation.name,
+                        "reason": "rowcount_below_minimum",
+                        "minimum": statement.require_rowcount_min,
+                        "actual": rowcount,
+                    },
+                )
             if statement.require_rowcount_max is not None and rowcount > statement.require_rowcount_max:
-                raise HTTPException(status_code=409, detail={"operation": operation.name, "reason": "rowcount_above_maximum", "maximum": statement.require_rowcount_max, "actual": rowcount})
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "operation": operation.name,
+                        "reason": "rowcount_above_maximum",
+                        "maximum": statement.require_rowcount_max,
+                        "actual": rowcount,
+                    },
+                )
             value: Any = {"rowcount": rowcount}
         elif statement.mode == "fetch_one":
             row = result.mappings().first()
@@ -132,7 +210,7 @@ async def _execute_on_connection(conn, operation: OperationConfig, *, body: Any,
     return output
 
 
-async def execute_operation(engine, operation: OperationConfig, *, body: Any, request: Request, principal: Principal) -> dict[str, Any]:
+async def execute_operation(engine: AsyncEngine, operation: OperationConfig, *, body: Any, request: Request, principal: Principal) -> dict[str, Any]:
     validate_json_schema(body, operation.input_schema, label=f"operation:{operation.name}")
     if operation.transaction:
         async with engine.begin() as conn:
@@ -142,72 +220,162 @@ async def execute_operation(engine, operation: OperationConfig, *, body: Any, re
 
 
 def idempotency_digest(project_slug: str, operation_name: str, principal: Principal, raw_key: str) -> str:
-    raw = f"{project_slug}\x00{operation_name}\x00{principal.subject}\x00{raw_key}".encode("utf-8")
+    """Hash the logical idempotency-key identity, *not* the request payload."""
+
+    raw = f"{project_slug}\x00{operation_name}\x00{principal.kind}\x00{principal.subject}\x00{raw_key}".encode("utf-8")
     return hashlib.sha256(raw).hexdigest()
 
 
-async def claim_idempotency(engine, project_slug: str, operation_name: str, digest: str, *, pending_ttl_seconds: int = 300) -> tuple[str, Any | None]:
-    """Atomically reserve an idempotency key before side effects.
+def _referenced_headers(operation: OperationConfig) -> set[str]:
+    headers: set[str] = set()
+    for statement in operation.statements:
+        for source in statement.params.values():
+            if isinstance(source, str) and source.startswith("$header."):
+                headers.add(source[len("$header."):].lower())
+    return headers
 
-    Returns ("claimed", None), ("complete", response), or ("pending", None).
-    The unique constraint makes this safe across multiple workers sharing the internal DB.
+
+def operation_input_context(*, body: Any, request: Request, principal: Principal, operation: OperationConfig) -> dict[str, Any]:
+    """Return the canonical declarative input context for cache/idempotency decisions."""
+    selected_headers = {
+        name: request.headers.get(name)
+        for name in sorted(_referenced_headers(operation))
+    }
+    return {
+        "method": request.method.upper(),
+        "body": body,
+        "path": dict(sorted(request.path_params.items())),
+        "query": sorted(request.query_params.multi_items()),
+        "validated_parameters": getattr(request.state, "validated_parameters", {}),
+        "tenant_id": principal.tenant_id,
+        "headers": selected_headers,
+    }
+
+
+def request_fingerprint(*, body: Any, request: Request, principal: Principal, operation: OperationConfig) -> str:
+    """Canonical fingerprint of every declarative input that can alter a side effect."""
+    payload = operation_input_context(body=body, request=request, principal=principal, operation=operation)
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+async def execute_idempotent_operation(
+    engine: AsyncEngine,
+    *,
+    project_slug: str,
+    operation: OperationConfig,
+    principal: Principal,
+    raw_key: str,
+    body: Any,
+    request: Request,
+) -> tuple[dict[str, Any], bool]:
+    """Execute an idempotent transactional operation atomically.
+
+    The idempotency claim, business statements, response persistence and commit are
+    a single database transaction on the operation's own database. Therefore a
+    process crash before commit rolls everything back, while a crash after commit
+    leaves a completed replay record. This avoids v0.3's commit/completion gap.
+
+    Returns `(result, replayed)`.
     """
+
+    if not operation.transaction:
+        raise RuntimeError("idempotent operation requires transaction=true")
+    validate_json_schema(body, operation.input_schema, label=f"operation:{operation.name}")
+    digest = idempotency_digest(project_slug, operation.name, principal, raw_key)
+    fingerprint = request_fingerprint(body=body, request=request, principal=principal, operation=operation)
     now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(seconds=operation.idempotency_ttl_seconds)
+
     try:
         async with engine.begin() as conn:
-            await conn.execute(insert(idempotency_table).values(
-                project_slug=project_slug, operation_name=operation_name, key_hash=digest, state="pending",
-                response_json=None, created_at=now, updated_at=now,
+            # Periodically prune all expired rows for this operation. The indexed
+            # range delete is deliberately throttled so retention does not become a
+            # per-request hot-path table scan under high RPS.
+            if _idempotency_cleanup_due(project_slug, operation):
+                expired_ids = list((await conn.execute(
+                    select(operation_idempotency_table.c.id)
+                    .where(
+                        (operation_idempotency_table.c.project_slug == project_slug)
+                        & (operation_idempotency_table.c.operation_name == operation.name)
+                        & (operation_idempotency_table.c.updated_at < cutoff)
+                    )
+                    .order_by(operation_idempotency_table.c.updated_at, operation_idempotency_table.c.id)
+                    .limit(operation.idempotency_cleanup_batch_size)
+                )).scalars().all())
+                if expired_ids:
+                    await conn.execute(delete(operation_idempotency_table).where(
+                        operation_idempotency_table.c.id.in_(expired_ids)
+                    ))
+                if len(expired_ids) >= operation.idempotency_cleanup_batch_size:
+                    # A backlog remains. Under active traffic retry cleanup soon rather
+                    # than waiting for the normal janitor interval.
+                    _idempotency_cleanup_after[(project_slug, operation.name)] = monotonic() + 1.0
+            # Expired replay records may be reused exactly after the declared
+            # retention window even when the global janitor is not due yet.
+            await conn.execute(delete(operation_idempotency_table).where(
+                (operation_idempotency_table.c.project_slug == project_slug)
+                & (operation_idempotency_table.c.operation_name == operation.name)
+                & (operation_idempotency_table.c.key_hash == digest)
+                & (operation_idempotency_table.c.updated_at < cutoff)
             ))
-        return "claimed", None
-    except IntegrityError:
-        pass
-
-    async with engine.connect() as conn:
-        row = (await conn.execute(select(idempotency_table).where(
-            (idempotency_table.c.project_slug == project_slug)
-            & (idempotency_table.c.operation_name == operation_name)
-            & (idempotency_table.c.key_hash == digest)
-        ))).mappings().first()
-    if not row:
-        # A failing claimant may have released the row between our conflict and read. Retry once.
-        return await claim_idempotency(engine, project_slug, operation_name, digest, pending_ttl_seconds=pending_ttl_seconds)
-    if row["state"] == "complete" and row["response_json"] is not None:
-        return "complete", json.loads(row["response_json"])
-
-    created = row["created_at"]
-    if created.tzinfo is None:
-        created = created.replace(tzinfo=timezone.utc)
-    if (now - created).total_seconds() > pending_ttl_seconds:
-        # Crash recovery: delete only this still-pending stale reservation, then attempt to claim again.
-        async with engine.begin() as conn:
-            await conn.execute(delete(idempotency_table).where(
-                (idempotency_table.c.id == row["id"]) & (idempotency_table.c.state == "pending")
+            await conn.execute(insert(operation_idempotency_table).values(
+                project_slug=project_slug,
+                operation_name=operation.name,
+                key_hash=digest,
+                request_hash=fingerprint,
+                state="pending",
+                response_json=None,
+                created_at=now,
+                updated_at=now,
             ))
-        return await claim_idempotency(engine, project_slug, operation_name, digest, pending_ttl_seconds=pending_ttl_seconds)
-    return "pending", None
+            result = await _execute_on_connection(conn, operation, body=body, request=request, principal=principal)
+            payload = json.dumps(result, separators=(",", ":"), ensure_ascii=False, default=str)
+            if len(payload.encode("utf-8")) > operation.idempotency_max_response_bytes:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"Idempotent replay response exceeds idempotency_max_response_bytes={operation.idempotency_max_response_bytes}",
+                )
+            await conn.execute(update(operation_idempotency_table).where(
+                (operation_idempotency_table.c.project_slug == project_slug)
+                & (operation_idempotency_table.c.operation_name == operation.name)
+                & (operation_idempotency_table.c.key_hash == digest)
+            ).values(state="complete", response_json=payload, updated_at=datetime.now(timezone.utc)))
+        return result, False
+    except IntegrityError as exc:
+        # This may be either the idempotency unique constraint or a business
+        # constraint failure. Only treat it as a replay if the idempotency row exists.
+        async with engine.connect() as conn:
+            row = (await conn.execute(select(operation_idempotency_table).where(
+                (operation_idempotency_table.c.project_slug == project_slug)
+                & (operation_idempotency_table.c.operation_name == operation.name)
+                & (operation_idempotency_table.c.key_hash == digest)
+            ))).mappings().first()
+        if not row:
+            raise
+        if row["request_hash"] != fingerprint:
+            raise HTTPException(
+                status_code=409,
+                detail="Idempotency key was already used with a different request payload",
+            ) from exc
+        if row["state"] == "complete" and row["response_json"] is not None:
+            return json.loads(row["response_json"]), True
+        raise HTTPException(
+            status_code=409,
+            detail="An identical idempotent operation is still in progress",
+            headers={"Retry-After": "1"},
+        ) from exc
 
 
-async def complete_idempotency(engine, project_slug: str, operation_name: str, digest: str, response: Any) -> None:
-    payload = json.dumps(response, separators=(",", ":"), default=str)
-    now = datetime.now(timezone.utc)
-    async with engine.begin() as conn:
-        result = await conn.execute(update(idempotency_table).where(
-            (idempotency_table.c.project_slug == project_slug)
-            & (idempotency_table.c.operation_name == operation_name)
-            & (idempotency_table.c.key_hash == digest)
-            & (idempotency_table.c.state == "pending")
-        ).values(state="complete", response_json=payload, updated_at=now))
-    if not result.rowcount:
-        raise RuntimeError("Idempotency reservation disappeared before completion")
+# Compatibility helpers retained for code that imported the v0.3 symbols. New
+# runtime code uses execute_idempotent_operation() and the business DB ledger.
+async def claim_idempotency(*args, **kwargs):  # pragma: no cover - compatibility only
+    raise RuntimeError("v0.4 removed split-phase idempotency; use execute_idempotent_operation")
 
 
-async def release_idempotency(engine, project_slug: str, operation_name: str, digest: str) -> None:
-    """Release a pending reservation after a failed operation so a later retry can execute."""
-    async with engine.begin() as conn:
-        await conn.execute(delete(idempotency_table).where(
-            (idempotency_table.c.project_slug == project_slug)
-            & (idempotency_table.c.operation_name == operation_name)
-            & (idempotency_table.c.key_hash == digest)
-            & (idempotency_table.c.state == "pending")
-        ))
+async def complete_idempotency(*args, **kwargs):  # pragma: no cover - compatibility only
+    raise RuntimeError("v0.4 removed split-phase idempotency; use execute_idempotent_operation")
+
+
+async def release_idempotency(*args, **kwargs):  # pragma: no cover - compatibility only
+    return None

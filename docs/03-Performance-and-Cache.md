@@ -82,11 +82,28 @@ Tradeoff: if a generation bump fails during a Redis outage, another process may 
 
 ## Rate limiting
 
-Memory or Redis token buckets support steady rate + burst. API keys can override project defaults.
+Memory or Redis token buckets support steady rate + burst. API keys can override project defaults. v0.4 uses a **principal-global primary bucket**, so changing `/items/1` to `/items/2` does not mint a fresh primary quota.
+
+An optional second budget protects the normalized FastAPI route template:
+
+```json
+{
+  "rate_limit": {
+    "requests": 1000,
+    "window_seconds": 60,
+    "burst": 200,
+    "route_requests": 200,
+    "route_window_seconds": 60,
+    "route_burst": 40
+  }
+}
+```
+
+The memory limiter is bounded with `memory_max_buckets`, `memory_idle_ttl_seconds` and `memory_cleanup_interval_seconds`. These controls prevent a high-cardinality identity/path attack from growing an unbounded dictionary. Redis remains the correct choice for a quota shared by multiple workers/hosts.
 
 ## Backpressure
 
-`max_concurrent_requests` is a semaphore around project requests. Requests waiting longer than `max_queue_wait_seconds` can be rejected instead of consuming unlimited memory and DB waiters.
+`max_concurrent_requests` bounds project work. With `reject_when_saturated:true`, excess requests are rejected immediately. With it disabled, waiting is still bounded by `max_queue_wait_seconds` instead of consuming unlimited memory and DB waiters.
 
 This protects the process, but values should match actual CPU/RAM/DB capacity.
 
@@ -110,3 +127,12 @@ The global `cache.stale_ttl_seconds` is only a default. SQL/Mongo resource cache
 ## Rate-limiter failure policy
 
 `rate_limit.fail_open:false` is the safer default for public abuse protection: a Redis limiter outage returns a temporary `503` instead of silently disabling limits. Set `fail_open:true` only when availability is more important than temporary enforcement and the downstream DB/API can absorb the extra traffic.
+
+
+## Request-body memory protection
+
+v0.4 applies the project body limit while ASGI request chunks are received. This covers clients that omit or lie about `Content-Length`. Endpoint-specific/media limits still apply in addition to the generic project limit.
+
+## Failure amplification
+
+Cache fail-open can preserve availability during Redis failure, but the miss traffic then moves to the database. Rate-limit fail-open can preserve traffic but temporarily removes an abuse budget. Capacity plans must evaluate the **degraded path**, not only the normal cached path. See `26-Operational-Failure-Modes.md`.

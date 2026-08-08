@@ -8,6 +8,7 @@ from sqlalchemy import JSON, Boolean, Column, DateTime, Float, Integer, MetaData
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from .config import ColumnConfig, ProjectConfig, ResourceConfig
+from .operations import init_operation_idempotency
 
 
 @dataclass
@@ -17,18 +18,30 @@ class DatabaseRegistry:
     tables: dict[tuple[str, str], Table]
 
     async def dispose(self) -> None:
+        errors: list[Exception] = []
         for engine in self.engines.values():
-            await engine.dispose()
+            try:
+                await engine.dispose()
+            except Exception as exc:  # cleanup should continue for the other pools
+                errors.append(exc)
+        if errors:
+            raise RuntimeError(f"Failed to dispose {len(errors)} database engine(s)") from errors[0]
 
 
 def _column_type(spec: ColumnConfig):
     t = spec.type.lower()
-    if t in {"int", "integer", "bigint"}: return Integer
-    if t in {"float", "number", "double"}: return Float
-    if t in {"bool", "boolean"}: return Boolean
-    if t in {"text"}: return Text
-    if t in {"datetime", "timestamp"}: return DateTime(timezone=True)
-    if t in {"json", "object", "array"}: return JSON
+    if t in {"int", "integer", "bigint"}:
+        return Integer
+    if t in {"float", "number", "double"}:
+        return Float
+    if t in {"bool", "boolean"}:
+        return Boolean
+    if t in {"text"}:
+        return Text
+    if t in {"datetime", "timestamp"}:
+        return DateTime(timezone=True)
+    if t in {"json", "object", "array"}:
+        return JSON
     return String(spec.max_length or 255)
 
 
@@ -76,9 +89,50 @@ def build_declared_table(metadata: MetaData, resource: ResourceConfig) -> Table:
 async def _reflect_table(engine: AsyncEngine, metadata: MetaData, table_name: str) -> Table:
     def sync_reflect(conn):
         metadata.reflect(bind=conn, only=[table_name])
-    async with engine.begin() as conn:
-        await conn.run_sync(sync_reflect)
+    try:
+        async with engine.connect() as conn:
+            await conn.run_sync(sync_reflect)
+    except Exception as exc:
+        raise RuntimeError(f"Could not reflect database table {table_name!r}") from exc
     return metadata.tables[table_name]
+
+
+def validate_resource_contract(resource: ResourceConfig, table: Table) -> None:
+    fields = set(table.c.keys())
+    references: dict[str, list[str]] = {
+        "primary_key": [resource.primary_key],
+        "allowed_filters": resource.allowed_filters,
+        "search_fields": resource.search_fields,
+        "allowed_sort": resource.allowed_sort,
+        "hidden_fields": resource.hidden_fields,
+        "readable_fields": resource.readable_fields or [],
+        "writable_fields": resource.writable_fields or [],
+    }
+    for name, value in (
+        ("tenant_field", resource.tenant_field),
+        ("owner_field", resource.owner_field),
+        ("soft_delete_field", resource.soft_delete_field),
+        ("cursor_field", resource.cursor_field),
+    ):
+        if value:
+            references[name] = [value]
+    missing = {name: sorted(set(values) - fields) for name, values in references.items() if set(values) - fields}
+    if missing:
+        raise RuntimeError(f"Resource {resource.path!r} references missing database columns: {missing}")
+
+    protected = {
+        value
+        for value in (resource.primary_key, resource.tenant_field, resource.owner_field, resource.soft_delete_field)
+        if value
+    }
+    if resource.writable_fields is not None:
+        unsafe = protected & set(resource.writable_fields)
+        if unsafe:
+            raise RuntimeError(f"Resource {resource.path!r} exposes protected policy fields as writable: {sorted(unsafe)}")
+    if resource.owner_actions and not resource.owner_field:
+        raise RuntimeError(f"Resource {resource.path!r} defines owner_actions without owner_field")
+    if resource.default_limit > resource.max_limit:
+        raise RuntimeError(f"Resource {resource.path!r} default_limit may not exceed max_limit")
 
 
 async def build_registry(project: ProjectConfig) -> DatabaseRegistry:
@@ -86,24 +140,40 @@ async def build_registry(project: ProjectConfig) -> DatabaseRegistry:
     metadata_map: dict[str, MetaData] = {}
     tables: dict[tuple[str, str], Table] = {}
 
-    for alias, db in project.databases.items():
-        _ensure_sqlite_dir(db.url)
-        engines[alias] = create_async_engine(db.url, **_engine_kwargs(db))
-        metadata_map[alias] = MetaData()
+    try:
+        for alias, db in project.databases.items():
+            _ensure_sqlite_dir(db.url)
+            engines[alias] = create_async_engine(db.url, **_engine_kwargs(db))
+            metadata_map[alias] = MetaData()
 
-    for resource in project.resources:
-        if not resource.enabled:
-            continue
-        if resource.database not in engines:
-            raise RuntimeError(f"Unknown database alias {resource.database!r} in resource {resource.path!r}")
-        engine = engines[resource.database]
-        metadata = metadata_map[resource.database]
-        if resource.auto_create:
-            table = build_declared_table(metadata, resource)
-            async with engine.begin() as conn:
-                await conn.run_sync(metadata.create_all)
-        else:
-            table = await _reflect_table(engine, metadata, resource.table)
-        tables[(resource.database, resource.table)] = table
+        idempotent_aliases = {op.database for op in project.operations if op.idempotency}
+        for alias in idempotent_aliases:
+            if alias not in engines:
+                raise RuntimeError(f"Unknown database alias {alias!r} in idempotent operation")
+            await init_operation_idempotency(engines[alias], mode=project.databases[alias].support_schema_mode)
 
-    return DatabaseRegistry(engines=engines, metadata=metadata_map, tables=tables)
+        for resource in project.resources:
+            if not resource.enabled:
+                continue
+            if resource.database not in engines:
+                raise RuntimeError(f"Unknown database alias {resource.database!r} in resource {resource.path!r}")
+            engine = engines[resource.database]
+            metadata = metadata_map[resource.database]
+            db_cfg = project.databases[resource.database]
+            if resource.auto_create and db_cfg.support_schema_mode == "create":
+                table = build_declared_table(metadata, resource)
+                async with engine.begin() as conn:
+                    await conn.run_sync(metadata.create_all)
+            else:
+                table = await _reflect_table(engine, metadata, resource.table)
+            validate_resource_contract(resource, table)
+            tables[(resource.database, resource.table)] = table
+
+        return DatabaseRegistry(engines=engines, metadata=metadata_map, tables=tables)
+    except Exception:
+        for engine in engines.values():
+            try:
+                await engine.dispose()
+            except Exception:
+                pass
+        raise

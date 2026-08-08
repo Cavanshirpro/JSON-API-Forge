@@ -5,7 +5,9 @@
     "api_key_header": "X-API-Key",
     "jwt_enabled": true,
     "allow_query_api_key": false,
-    "require_https": false
+    "require_https": false,
+    "bootstrap_enabled": true,
+    "jwt_secret": "$env:APP1_JWT_SECRET"
   },
   "roles": {
     "admin": {
@@ -28,14 +30,44 @@
     },
     "social_client": {
       "permissions": [
-        "social.*",
+        "social.profiles.list",
+        "social.profiles.read",
+        "social.profiles.create",
+        "social.profiles.update",
+        "social.profiles.delete",
+        "social.posts.read",
+        "social.posts.create",
+        "social.posts.update",
+        "social.posts.delete",
+        "social.comments.read",
+        "social.comments.create",
+        "social.comments.update",
+        "social.comments.delete",
+        "social.reactions.list",
+        "social.reactions.read",
+        "social.reactions.create",
+        "social.reactions.update",
+        "social.reactions.delete",
+        "social.follows.list",
+        "social.follows.read",
+        "social.follows.create",
+        "social.follows.update",
+        "social.follows.delete",
+        "social.notifications.list",
+        "social.notifications.read",
+        "social.notifications.update",
         "media.read",
         "media.upload"
       ]
     },
     "game_client": {
       "permissions": [
-        "gaming.*",
+        "gaming.players.list",
+        "gaming.players.read",
+        "gaming.players.create",
+        "gaming.players.update",
+        "gaming.leaderboard.list",
+        "gaming.leaderboard.read",
         "system.meta.read"
       ]
     },

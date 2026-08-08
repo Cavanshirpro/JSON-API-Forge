@@ -10,7 +10,9 @@
     }
   },
   "security": {
-    "bootstrap_admin_key": "$env:APP2_BOOTSTRAP_ADMIN_KEY"
+    "bootstrap_admin_key": "$env:APP2_BOOTSTRAP_ADMIN_KEY",
+    "bootstrap_enabled": true,
+    "jwt_enabled": false
   },
   "roles": {
     "admin": {

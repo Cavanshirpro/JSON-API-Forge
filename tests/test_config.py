@@ -23,3 +23,28 @@ def test_feature_pack_expansion():
     assert "messaging/messages" in paths
     assert "social/posts" in paths
     assert "gaming/leaderboard" in paths
+
+
+def test_feature_packs_are_safe_primitives_not_authoritative_write_backdoors():
+    root = Path(__file__).resolve().parents[1]
+    cfg = load_config(root / "app")
+    app1 = next(p for p in cfg.projects if p.slug == "app1")
+    expand_feature_packs(app1)
+    resources = {r.path: r for r in app1.resources}
+
+    # Identity-bound fields are injected from the authenticated principal instead of
+    # being writable client payload fields.
+    assert resources["social/posts"].owner_field == "author_id"
+    assert "author_id" not in (resources["social/posts"].writable_fields or [])
+    assert resources["messaging/messages"].owner_field == "sender_id"
+    assert "sender_id" not in (resources["messaging/messages"].writable_fields or [])
+
+    # Game state that normally requires anti-cheat/server authority is read-only via
+    # generic CRUD. A game may mutate it through validated RPC/hooks instead.
+    for path in ("gaming/saves", "gaming/inventory", "gaming/achievements", "gaming/leaderboard", "gaming/sessions"):
+        assert resources[path].allowed_actions == ["list", "read"]
+    assert resources["gaming/players"].writable_fields == ["display_name"]
+
+    # Example roles intentionally avoid broad social.* / gaming.* grants.
+    assert "social.*" not in app1.roles["social_client"].permissions
+    assert "gaming.*" not in app1.roles["game_client"].permissions

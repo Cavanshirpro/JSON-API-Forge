@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import time
 from collections import OrderedDict
 from hashlib import sha256
 from typing import Any
+
+log = logging.getLogger("json_api_forge.cache")
 
 
 class MemoryTTLCache:
@@ -102,27 +105,57 @@ class CacheManager:
     """Read-through JSON cache with generations, stampede locks and optional stale-while-revalidate."""
     def __init__(self, backend, prefix: str = "forge", *, fail_open: bool = True):
         self.backend, self.prefix, self.fail_open = backend, prefix, fail_open
-        self._locks: dict[str, asyncio.Lock] = {}
+        self._locks: dict[str, tuple[asyncio.Lock, int]] = {}
         self._locks_guard = asyncio.Lock()
         self._refreshing: set[str] = set()
         self._refresh_guard = asyncio.Lock()
         self._tasks: set[asyncio.Task] = set()
 
     async def _lock_for(self, key: str) -> asyncio.Lock:
-        async with self._locks_guard:
-            if key not in self._locks: self._locks[key] = asyncio.Lock()
-            return self._locks[key]
+        """Borrow a per-key lock and track active/waiting users.
 
-    async def generation(self, namespace: str) -> int:
-        try: return await self.backend.generation(namespace)
+        The registry contains only keys currently participating in a load. A hostile
+        stream of unique cache keys therefore cannot leave an unbounded lock map.
+        """
+        async with self._locks_guard:
+            entry = self._locks.get(key)
+            if entry is None:
+                lock = asyncio.Lock()
+                self._locks[key] = (lock, 1)
+                return lock
+            lock, users = entry
+            self._locks[key] = (lock, users + 1)
+            return lock
+
+    async def _release_lock(self, key: str, lock: asyncio.Lock) -> None:
+        async with self._locks_guard:
+            entry = self._locks.get(key)
+            if entry is None or entry[0] is not lock:
+                return
+            users = entry[1] - 1
+            if users <= 0:
+                self._locks.pop(key, None)
+            else:
+                self._locks[key] = (lock, users)
+
+    async def generation(self, namespace: str) -> int | None:
+        try:
+            return await self.backend.generation(namespace)
         except Exception:
-            if self.fail_open: return 0
+            if self.fail_open:
+                # Generation is the invalidation authority. Falling back to generation
+                # zero could resurrect stale L1 entries during a Redis outage. None
+                # means bypass cache for this request instead.
+                return None
             raise
 
     async def make_key(self, namespace: str, payload: Any) -> str:
         generation = await self.generation(namespace)
         raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
-        return f"{namespace}:g{generation}:{sha256(raw).hexdigest()}"
+        digest = sha256(raw).hexdigest()
+        if generation is None:
+            return f"{namespace}:bypass:{time.monotonic_ns()}:{digest}"
+        return f"{namespace}:g{generation}:{digest}"
 
     async def _raw_get(self, key: str) -> bytes | None:
         try: return await self.backend.get(key)
@@ -132,8 +165,17 @@ class CacheManager:
 
     async def get_json_state(self, key: str) -> tuple[Any | None, str]:
         raw = await self._raw_get(key)
-        if raw is None: return None, "miss"
-        parsed = json.loads(raw)
+        if raw is None:
+            return None, "miss"
+        try:
+            parsed = json.loads(raw)
+        except (json.JSONDecodeError, UnicodeDecodeError, TypeError, ValueError):
+            log.warning("Discarding malformed cache entry key=%s", key)
+            try:
+                await self.backend.delete(key)
+            except Exception:
+                pass
+            return None, "miss"
         if isinstance(parsed, dict) and parsed.get("__forge_cache_v") == 1 and "value" in parsed:
             state = "fresh" if time.time() <= float(parsed.get("fresh_until", 0)) else "stale"
             return parsed["value"], state
@@ -152,30 +194,40 @@ class CacheManager:
 
     async def _load_locked(self, key: str, ttl: int, stale_ttl: int, loader):
         lock = await self._lock_for(key)
-        async with lock:
-            value, state = await self.get_json_state(key)
-            if state == "fresh": return value, True
-            distributed_factory = getattr(self.backend, "distributed_lock", None)
-            distributed_lock = distributed_factory(key) if distributed_factory is not None else None
-            acquired = False
-            if distributed_lock is not None:
-                try: acquired = bool(await distributed_lock.acquire())
-                except Exception: acquired = False
-            try:
-                if acquired:
-                    value, state = await self.get_json_state(key)
-                    if state == "fresh": return value, True
-                value = await loader()
-                await self.set_json(key, value, ttl, stale_ttl)
-                return value, False
-            finally:
-                if acquired:
-                    try: await distributed_lock.release()
-                    except Exception: pass
+        try:
+            async with lock:
+                value, state = await self.get_json_state(key)
+                if state == "fresh": return value, True
+                distributed_factory = getattr(self.backend, "distributed_lock", None)
+                distributed_lock = distributed_factory(key) if distributed_factory is not None else None
+                acquired = False
+                if distributed_lock is not None:
+                    try: acquired = bool(await distributed_lock.acquire())
+                    except Exception: acquired = False
+                try:
+                    if acquired:
+                        value, state = await self.get_json_state(key)
+                        if state == "fresh": return value, True
+                    value = await loader()
+                    await self.set_json(key, value, ttl, stale_ttl)
+                    return value, False
+                finally:
+                    if acquired:
+                        try: await distributed_lock.release()
+                        except Exception: pass
+        finally:
+            await self._release_lock(key, lock)
 
     async def _refresh(self, key: str, ttl: int, stale_ttl: int, loader) -> None:
         try:
             await self._load_locked(key, ttl, stale_ttl, loader)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            # Stale-while-revalidate is intentionally off the request path. A loader
+            # failure keeps serving the bounded stale entry and is observable rather
+            # than becoming an unhandled background-task exception.
+            log.warning("Background cache refresh failed key=%s error=%s", key, type(exc).__name__, exc_info=True)
         finally:
             async with self._refresh_guard: self._refreshing.discard(key)
 

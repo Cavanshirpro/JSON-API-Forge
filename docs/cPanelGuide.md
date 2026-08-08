@@ -41,13 +41,15 @@ pip install -r requirements.txt
 
 If your host does not offer Redis, leave cache/rate-limit/realtime on memory mode and understand that those states are process-local.
 
-## 4. Configure `.env`
+## 4. Configure `.env` safely
+
+Do **not** copy a known example admin password. v0.4 keeps secret values blank in `.env.example`. Generate a gitignored file first:
 
 ```bash
-cp .env.example .env
+forge init --production
 ```
 
-Set real secrets and DB URLs:
+Then edit deployment-specific DB/Redis URLs or import equivalent values through cPanel Application Manager environment variables / your hosting secret mechanism:
 
 ```env
 APP_ENV=production
@@ -58,7 +60,7 @@ INTERNAL_DATABASE_URL=postgresql+asyncpg://user:password@host:5432/forge_interna
 REDIS_URL=redis://127.0.0.1:6379/0
 ```
 
-A dedicated internal PostgreSQL database/schema is preferable to SQLite when Passenger may start multiple processes.
+A dedicated internal PostgreSQL database/schema is preferable to SQLite when Passenger may start multiple processes because API-key/bootstrap state, audit metadata and media metadata may be shared. v0.4 operation idempotency itself lives in the selected **business database** so its record can commit atomically with SQL side effects.
 
 ## 5. Choose cPanel-safe project settings
 
@@ -93,8 +95,9 @@ Some hosts expose the same concept through CloudLinux “Setup Python App”. Fi
 ## 7. Validate before restart
 
 ```bash
-python forge.py validate
-python forge.py routes
+forge validate
+forge doctor --production
+forge routes
 python -m compileall framework app main.py passenger_wsgi.py
 pytest -q
 ```
@@ -114,7 +117,6 @@ Use the cPanel restart action. cPanel's command-line WSGI guide also documents P
 ```text
 https://api.example.com/health
 https://api.example.com/ready
-https://api.example.com/docs
 https://api.example.com/api/app1/v1/_docs
 ```
 
@@ -151,3 +153,24 @@ Nginx → Uvicorn workers → Forge
              ├─ Redis
              └─ object storage/CDN
 ```
+
+
+## 13. Current cPanel/Passenger notes (v0.4)
+
+As of the documentation revision used for v0.4, cPanel Application Manager deploys applications through Phusion Passenger and allows application environment variables; cPanel's Python WSGI guide still documents `passenger_wsgi.py`, virtual environments, `requirements.txt`, and the Passenger `tmp/restart.txt` restart mechanism. The hosting provider can disable Application Manager, so availability is account/provider-specific.
+
+Forge's compatibility bridge is therefore a pragmatic **HTTP** deployment option, not an attempt to turn WSGI into native ASGI. If the application depends on WebSocket semantics, long-lived SSE, large concurrent uploads or high worker counts, move the runtime behind a native ASGI server rather than designing around Passenger limitations.
+
+## 14. cPanel production checklist
+
+- Application Manager/Passenger enabled by the provider.
+- Python version satisfies `pyproject.toml` (`>=3.11`).
+- Virtual environment contains `requirements.txt` dependencies.
+- `.env` is outside public/static directories and not downloadable.
+- `forge doctor --production` has no errors.
+- PostgreSQL/MySQL host permits the required outbound connection and pool count.
+- Redis is reachable if Redis-backed features are configured.
+- `passenger_wsgi.py` is the expected entry point and imports cleanly.
+- `/health` and `/ready` behave correctly after restart.
+- Logs are writable/rotated without exposing credentials.
+- WebSocket/realtime requirements have been evaluated separately; if they are important, use native ASGI.

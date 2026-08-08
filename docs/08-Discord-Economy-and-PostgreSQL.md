@@ -12,7 +12,7 @@ Forge generated API
     ├─ JSON Schema validation
     ├─ cache for reads
     ├─ named transactional RPC for money changes
-    ├─ idempotency reservation
+    ├─ request fingerprint + transactional idempotency
     └─ audit
     ↓
 PostgreSQL / Supabase PostgreSQL
@@ -88,7 +88,7 @@ Only actions present in `allowed_actions` are generated.
 
 ## Step 3 — create a narrow bot API key
 
-Start the server with the bootstrap key in server environment, then provision a bot key:
+Generate deployment secrets with `forge init` (or your secret manager), start the server, then use the **one-time bootstrap principal** to provision a bot key:
 
 ```http
 POST /api/app1/v1/admin/api-keys
@@ -107,7 +107,7 @@ Content-Type: application/json
 
 The raw generated key is returned when created. Store it as a bot/server secret. Forge stores its hash, not the original raw key.
 
-Do not give the bot the bootstrap key.
+Do not give the bot the bootstrap key. With the default `bootstrap_one_time:true`, successfully creating the first persistent API key consumes bootstrap access for that project.
 
 ## Step 4 — read data
 
@@ -162,7 +162,16 @@ await economy.transfer(
 )
 ```
 
-See `examples/discord_economy/discord_py_example.py` and `bot_service.py`.
+v0.4 binds that logical key to a request fingerprint and stores the idempotency result in the **same PostgreSQL transaction** as the debit/credit/ledger changes. Therefore:
+
+- the same interaction + same payload can be retried safely and replays the stored result;
+- the same interaction ID reused with a different amount/payload is rejected;
+- a process crash before database commit rolls back both money changes and idempotency state;
+- a committed transaction contains both the business side effect and replay record.
+
+This guarantee is scoped to the same SQL database. If the command also charges an external payment provider or sends another non-transactional external side effect, use the provider's idempotency support and/or a transactional outbox.
+
+See `examples/discord_economy/discord_py_example.py`, `bot_service.py`, and `docs/17-Transactions-Idempotency-and-Consistency.md`.
 
 ## Step 6 — grant/admin actions
 

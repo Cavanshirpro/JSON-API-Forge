@@ -42,6 +42,7 @@ Example claim mapping:
 ```json
 {
   "security": {
+    "jwt_enabled": true,
     "jwt_provider": "jwks",
     "jwt_roles_claim": "app_metadata.roles",
     "jwt_permissions_claim": "app_metadata.permissions",
@@ -63,3 +64,21 @@ The configured algorithm allow-list, issuer and audience are checked. Do not dis
 `jwt_provider:"local_hs256"` keeps Forge's built-in `/admin/jwt` issuer.
 
 `jwt_provider:"jwks"` treats another identity provider such as Supabase as the issuer. Forge does **not** expose its local JWT-issuing endpoint in that mode, preventing two unrelated issuer models from being mixed accidentally.
+
+## v0.4 JWT default and project isolation
+
+JWT authentication is disabled by default. A Supabase/JWKS project must explicitly set `jwt_enabled:true`. JWKS mode does not need a local symmetric JWT signing secret because verification uses the configured issuer's public keys.
+
+If another project in the same Forge process uses `local_hs256`, give that project its own secret:
+
+```json
+{
+  "security": {
+    "jwt_enabled": true,
+    "jwt_provider": "local_hs256",
+    "jwt_secret": "$env:INTERNAL_ADMIN_JWT_SECRET"
+  }
+}
+```
+
+Do not intentionally reuse a local signing secret across unrelated projects simply because they share one Forge process. `forge doctor --production` reports global-secret fallback as an isolation warning.

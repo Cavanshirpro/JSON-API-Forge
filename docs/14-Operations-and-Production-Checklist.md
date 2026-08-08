@@ -2,9 +2,10 @@
 
 ## Secrets and identity
 
-- Replace every `CHANGE_ME` value before deployment.
+- Run `forge init` or provision secrets through a secret manager; the public `.env.example` intentionally contains no usable secret.
+- Run `forge doctor --production` and treat secret/config errors as release blockers.
 - Keep `.env` and database credentials outside public/static web roots.
-- Use the bootstrap key only to provision ordinary admin/service keys; rotate it when appropriate.
+- Use the bootstrap key only to provision ordinary admin/service keys; one-time bootstrap is the recommended/default v0.4 mode.
 - Give each bot/plugin/service a separate API key with minimum permissions and its own traffic budget.
 - Browser/mobile public clients should normally use user JWTs rather than a reusable privileged API key.
 - In external JWKS mode, configure issuer, audience and an explicit algorithm allow-list.
@@ -24,7 +25,8 @@
 - Keep related mutations in one transaction.
 - Use `require_rowcount_*` guards for invariants.
 - Enable idempotency for retry-sensitive writes and reuse a stable logical key.
-- Run the internal Forge idempotency DB on shared durable storage when multiple application servers must coordinate duplicate prevention.
+- For idempotent SQL/RPC, keep all protected SQL side effects in the same configured business database transaction so Forge can commit the request fingerprint/result atomically with them.
+- For cross-service side effects, use a durable outbox/inbox or provider-level idempotency; a SQL transaction cannot atomically commit Discord/payment/email/object-storage effects.
 - Do not cache side-effecting RPCs.
 
 ## Cache and Redis
@@ -77,13 +79,14 @@ cPanel/Passenger can serve ordinary HTTP endpoints through `passenger_wsgi.py` +
 ## Release procedure
 
 ```text
-1. validate JSON
-2. run tests
-3. run migrations
-4. rotate/load secrets
-5. deploy code/config
-6. verify /health and /ready
-7. verify one authenticated read + one safe write
-8. verify metrics/logging
-9. monitor error/latency during rollout
+1. `forge validate`
+2. `forge doctor --production`
+3. run unit + live-service integration tests
+4. run/rehearse migrations and backup restore
+5. load/rotate secrets intentionally
+6. deploy code/config
+7. verify `/health` and `/ready`
+8. verify one authenticated read + one safe write/retry path
+9. verify metrics/audit pressure/logging
+10. monitor error/latency/pool/Redis behavior during rollout
 ```

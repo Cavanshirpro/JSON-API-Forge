@@ -29,7 +29,7 @@ schemas/                   JSON Schemas for editor validation
 5. **Declarative API layer** — SQL resources, MongoDB resources, named SQL/RPC operations, data sources, media, realtime channels and custom endpoints.
 6. **Data/service layer** — SQLAlchemy async pools, PyMongo async pools, HTTPX connection pool, local media storage and Redis services.
 7. **Performance layer** — token-bucket limiting, L1/L2 cache, generation invalidation, stale-while-revalidate and stampede locks.
-8. **Consistency layer** — DB transactions, row-count guards and cross-worker idempotency reservations for sensitive RPCs.
+8. **Consistency layer** — DB transactions, row-count guards and same-business-database transactional idempotency records for sensitive RPCs.
 9. **Observability layer** — request IDs, readiness, Prometheus metrics and bounded/batched audit writing.
 10. **Extension ABI** — trusted Python hooks/dependencies for rules that cannot safely be represented as data.
 
@@ -81,3 +81,10 @@ JSON is the declarative language. Use it for stable policy and wiring: routes, s
 Python is the extension ABI for business logic that requires code: Discord membership verification, anti-cheat, cryptography, payment provider SDKs, image processing, unusual algorithms, complex branching or third-party libraries.
 
 Never let an untrusted API caller edit app JSON or select arbitrary Python import paths.
+
+
+## v0.4 runtime separation
+
+`framework/factory.py` now focuses on application creation, middleware, global health/readiness and orchestration. `framework/runtime.py` owns per-project service lifecycle (SQL/Mongo/cache/rate/realtime/media), while `framework/routers/` owns project route construction. This reduces the previous single-function maintenance bottleneck and creates clearer seams for further router decomposition.
+
+The architecture intentionally keeps a single declarative project model while allowing different runtime adapters. A project remains isolated by slug/API prefix, security principal scope, database registry, cache namespace and configured services, even when several projects share the same Python process.

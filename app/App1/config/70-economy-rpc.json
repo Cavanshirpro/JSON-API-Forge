@@ -27,8 +27,7 @@
         }
       },
       "writable_fields": [
-        "discord_user_id",
-        "balance"
+        "discord_user_id"
       ],
       "allowed_filters": [
         "discord_user_id",
@@ -49,12 +48,15 @@
         "discord_user_id"
       ],
       "permissions": {
-        "list": "economy.accounts.list",
+        "list": "economy.accounts.read",
         "read": "economy.accounts.read",
-        "create": "economy.accounts.create",
-        "update": "economy.accounts.update",
-        "delete": "economy.accounts.delete"
-      }
+        "create": "economy.accounts.create"
+      },
+      "allowed_actions": [
+        "list",
+        "read",
+        "create"
+      ]
     },
     {
       "database": "primary",
@@ -201,7 +203,7 @@
             "to_user": "$body.user_id",
             "amount": "$body.amount",
             "reason": "$body.reason",
-            "request_id": "$request.id"
+            "request_id": "$header.Idempotency-Key"
           },
           "result_name": "ledger"
         }
@@ -212,7 +214,8 @@
       ],
       "invalidate_operations": [
         "economy.balance"
-      ]
+      ],
+      "idempotency": true
     },
     {
       "name": "economy.transfer",
@@ -278,7 +281,7 @@
             "to_user": "$body.to_user",
             "amount": "$body.amount",
             "reason": "transfer",
-            "request_id": "$request.id"
+            "request_id": "$header.Idempotency-Key"
           },
           "result_name": "ledger"
         }

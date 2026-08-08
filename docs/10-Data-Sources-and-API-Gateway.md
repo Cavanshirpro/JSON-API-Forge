@@ -1,6 +1,6 @@
 # Data sources and API gateway
 
-A data source turns server-owned non-SQL data into a normal Forge endpoint.
+A data source turns server-owned non-SQL data into a normal Forge endpoint. In v0.4 it is private by default: configure a read permission or explicitly set `public:true`.
 
 Supported types:
 
@@ -49,7 +49,7 @@ X-API-Key: ...
 
 and Forge reads the file and returns the response.
 
-If writable, it also generates:
+If writable and a write permission is configured, it also generates:
 
 ```text
 POST   /content/catalog
@@ -108,3 +108,61 @@ The outbound HTTP layer reuses connections and includes timeout, retry/backoff a
 ## Choosing a backend
 
 Use SQL for relational transactions and strong constraints. Use MongoDB for document-shaped mutable data. Use JSON/YAML for small server-owned content/configuration. Use `http` when Forge is an authenticated/cached gateway to another service. Use a trusted custom hook when transformation/business logic is too complex for these declarative primitives.
+
+
+## v0.4 public-read / public-write split
+
+`public:true` affects **reads only**. This prevents a developer from making a catalog readable without realizing that POST/PATCH/DELETE became anonymous too.
+
+Public read + protected mutation:
+
+```json
+{
+  "name":"catalog",
+  "type":"json_file",
+  "file":"data/catalog.json",
+  "public":true,
+  "writable":true,
+  "write_permission":"catalog.write"
+}
+```
+
+Deliberately public mutation requires the separate opt-in:
+
+```json
+{
+  "public":true,
+  "public_write":true,
+  "writable":true
+}
+```
+
+Use `public_write` only when anonymous mutation is genuinely part of the product.
+
+## Filesystem safety and scaling limit
+
+Local file sources resolve inside the project directory and reject path escape. Writable JSON/YAML uses async locking, cross-process file locking and atomic replacement on the same host. This is a useful small-data mechanism, not a distributed database protocol. A shared/NFS filesystem can have different locking/atomicity behavior; high-write authoritative state belongs in PostgreSQL/MongoDB.
+
+
+## Retry safety for outbound HTTP sources
+
+`retries` is a resilience budget, not permission to repeat arbitrary side effects. v0.4 applies conservative retry semantics:
+
+- `GET`, `HEAD`, `OPTIONS`, `PUT` and `DELETE` may use the configured retry budget;
+- `POST` and `PATCH` are attempted once by default, even if `retries` is greater than zero;
+- only transport/timeouts and transient statuses such as `408`, `425`, `429`, `500`, `502`, `503` and `504` are retryable;
+- ordinary semantic/client failures such as `400`, `401`, `403` and `404` are not retried and do not trip the transient circuit breaker;
+- redirects are not followed automatically.
+
+If an upstream provides a real idempotency contract and you intentionally want mutation retries, set:
+
+```json
+{
+  "type": "http",
+  "method": "POST",
+  "retries": 2,
+  "retry_non_idempotent": true
+}
+```
+
+Do this only when the upstream request itself carries a stable provider idempotency key or is otherwise safe to repeat. JSON API Forge cannot infer whether a third-party POST charges a card, creates an order or sends a message.

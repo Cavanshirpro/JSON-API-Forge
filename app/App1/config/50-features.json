@@ -16,7 +16,8 @@
       "application/pdf"
     ],
     "public": false,
-    "deduplicate": true
+    "deduplicate": true,
+    "signed_urls_enabled": false
   },
   "features": {
     "messaging": {

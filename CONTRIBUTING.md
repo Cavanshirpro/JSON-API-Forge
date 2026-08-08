@@ -17,9 +17,8 @@ The license contains a narrow exception allowing a collaboration-platform fork s
 ```bash
 python -m venv .venv
 source .venv/bin/activate  # Windows PowerShell: .venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-pip install -r requirements-dev.txt
-cp .env.example .env
+pip install -e ".[dev]"
+forge init
 ```
 
 Never commit the generated `.env` file.
@@ -27,13 +26,15 @@ Never commit the generated `.env` file.
 ## Validate changes
 
 ```bash
-python forge.py validate
-python forge.py routes
-python -m compileall -q framework app clients examples
-pytest -q
+forge validate
+forge doctor
+forge schema
+git diff --exit-code -- schemas
+python -m compileall -q framework app tests
+pytest --cov=framework --cov-report=term-missing -q
 ```
 
-Add or update tests for behavior changes. Keep security-sensitive business logic explicit and reviewable rather than hiding it in overly generic configuration.
+Add or update tests for behavior changes, including failure/concurrency cases when relevant. Update generated JSON Schemas and documentation whenever declarative behavior changes. Keep security-sensitive business logic explicit and reviewable rather than hiding it in overly generic configuration.
 
 ## Pull requests
 

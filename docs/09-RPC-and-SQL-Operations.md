@@ -1,6 +1,6 @@
 # Named RPC and SQL operations
 
-`operations[]` is the bridge between “JSON-configured API” and transactional SQL. It gives a stable HTTP contract without giving callers a raw SQL console.
+`operations[]` is the bridge between “JSON-configured API” and transactional SQL. It gives a stable HTTP contract without giving callers a raw SQL console. In v0.4 an operation is private by default: define `permission` or explicitly set `public:true`.
 
 ## Minimal operation
 
@@ -94,7 +94,11 @@ Validation happens before SQL.
 
 ## Idempotency
 
-Set `idempotency:true` for retry-sensitive writes. The client must send the configured idempotency header (default `Idempotency-Key`). Forge obtains a unique internal reservation before side effects, making duplicate concurrent execution safe across workers that share the same internal database.
+Set `idempotency:true` for retry-sensitive writes. v0.4 requires `transaction:true` for such operations and does not allow response caching on the same operation. The client must send the configured idempotency header (default `Idempotency-Key`).
+
+Forge binds the key to project + operation + principal + a request fingerprint and persists the idempotency result in the **same business database transaction** as the SQL side effects. A same-key retry with the same request replays the stored result; the same key with a different request is rejected with conflict.
+
+This is a same-database transactional guarantee, not cross-service exactly-once execution. External APIs and other databases need an outbox/inbox/provider-idempotency design.
 
 ## Caching read RPCs
 

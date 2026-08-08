@@ -4,7 +4,7 @@
 
 For the current JSON API Forge releases, **no additional ZIP or compiled binary is required**.
 
-GitHub automatically provides **Source code (zip)** and **Source code (tar.gz)** for every release/tag. Because JSON API Forge is currently a Python source framework rather than a compiled end-user executable, those automatic source archives are sufficient for v0.1.0, v0.2.0, and v0.3.0.
+GitHub automatically provides **Source code (zip)** and **Source code (tar.gz)** for every release/tag. Because JSON API Forge is currently a Python source framework rather than a compiled end-user executable, those automatic source archives are sufficient for v0.1.0 through v0.4.0.
 
 The GitHub-ready ZIP used to create a tagged commit is a publishing/import package. Once its exact contents are committed and tagged, uploading the same ZIP again as a release asset is normally redundant.
 
@@ -12,7 +12,7 @@ The GitHub-ready ZIP used to create a tagged commit is a publishing/import packa
 
 For each release:
 
-1. Create the version tag (`v0.1.0`, `v0.2.0`, or `v0.3.0`).
+1. Create the version tag (for example `v0.4.0`).
 2. Create a GitHub Release from that tag.
 3. Use the version's `RELEASE.md` as the release description.
 4. Let GitHub provide its automatic source ZIP and tarball.
@@ -25,7 +25,7 @@ Attach additional assets only when they provide something the automatic source a
 - a standalone compiled CLI executable;
 - a signed installer;
 - an official Docker/OCI image reference or exported image archive;
-- a Python wheel/sdist when JSON API Forge becomes an installable package;
+- an owner-published Python wheel/sdist when you intentionally support package installation;
 - generated SDK bundles;
 - an offline documentation bundle;
 - database migration bundles that are intentionally distributed separately;

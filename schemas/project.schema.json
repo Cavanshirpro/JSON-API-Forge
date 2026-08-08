@@ -1,6 +1,7 @@
 {
   "$defs": {
     "CacheConfig": {
+      "additionalProperties": false,
       "properties": {
         "enabled": {
           "default": true,
@@ -60,6 +61,7 @@
       "type": "object"
     },
     "ColumnConfig": {
+      "additionalProperties": false,
       "properties": {
         "type": {
           "default": "string",
@@ -108,6 +110,7 @@
       "type": "object"
     },
     "CustomEndpointConfig": {
+      "additionalProperties": false,
       "properties": {
         "path": {
           "title": "Path",
@@ -117,6 +120,11 @@
           "default": "GET",
           "title": "Method",
           "type": "string"
+        },
+        "public": {
+          "default": false,
+          "title": "Public",
+          "type": "boolean"
         },
         "permission": {
           "anyOf": [
@@ -246,6 +254,7 @@
       "type": "object"
     },
     "DataSourceConfig": {
+      "additionalProperties": false,
       "properties": {
         "name": {
           "title": "Name",
@@ -278,6 +287,16 @@
           ],
           "title": "Type",
           "type": "string"
+        },
+        "public": {
+          "default": false,
+          "title": "Public",
+          "type": "boolean"
+        },
+        "public_write": {
+          "default": false,
+          "title": "Public Write",
+          "type": "boolean"
         },
         "permission": {
           "anyOf": [
@@ -375,12 +394,34 @@
           "title": "Timeout Seconds",
           "type": "number"
         },
+        "max_response_bytes": {
+          "default": 2097152,
+          "maximum": 104857600,
+          "minimum": 1024,
+          "title": "Max Response Bytes",
+          "type": "integer"
+        },
+        "allow_insecure_http": {
+          "default": false,
+          "title": "Allow Insecure Http",
+          "type": "boolean"
+        },
+        "allow_private_networks": {
+          "default": false,
+          "title": "Allow Private Networks",
+          "type": "boolean"
+        },
         "retries": {
           "default": 2,
           "maximum": 10,
           "minimum": 0,
           "title": "Retries",
           "type": "integer"
+        },
+        "retry_non_idempotent": {
+          "default": false,
+          "title": "Retry Non Idempotent",
+          "type": "boolean"
         },
         "writable": {
           "default": false,
@@ -404,6 +445,20 @@
           "minimum": 1,
           "title": "Max Items",
           "type": "integer"
+        },
+        "allowed_filters": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Filters",
+          "type": "array"
+        },
+        "allowed_sort": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Sort",
+          "type": "array"
         },
         "cache_ttl_seconds": {
           "default": 15,
@@ -450,6 +505,7 @@
       "type": "object"
     },
     "DatabaseConfig": {
+      "additionalProperties": false,
       "properties": {
         "url": {
           "title": "Url",
@@ -459,6 +515,15 @@
           "default": false,
           "title": "Echo",
           "type": "boolean"
+        },
+        "support_schema_mode": {
+          "default": "create",
+          "enum": [
+            "create",
+            "validate"
+          ],
+          "title": "Support Schema Mode",
+          "type": "string"
         },
         "pool_pre_ping": {
           "default": true,
@@ -509,6 +574,7 @@
       "type": "object"
     },
     "DependencySpec": {
+      "additionalProperties": false,
       "properties": {
         "name": {
           "title": "Name",
@@ -532,6 +598,7 @@
       "type": "object"
     },
     "EventChannelConfig": {
+      "additionalProperties": false,
       "properties": {
         "name": {
           "title": "Name",
@@ -548,6 +615,16 @@
           ],
           "default": null,
           "title": "Path"
+        },
+        "public_publish": {
+          "default": false,
+          "title": "Public Publish",
+          "type": "boolean"
+        },
+        "public_subscribe": {
+          "default": false,
+          "title": "Public Subscribe",
+          "type": "boolean"
         },
         "publish_permission": {
           "anyOf": [
@@ -596,11 +673,71 @@
           "title": "Queue Size",
           "type": "integer"
         },
+        "max_websocket_connections": {
+          "default": 1000,
+          "maximum": 100000,
+          "minimum": 1,
+          "title": "Max Websocket Connections",
+          "type": "integer"
+        },
+        "max_sse_connections": {
+          "default": 1000,
+          "maximum": 100000,
+          "minimum": 1,
+          "title": "Max Sse Connections",
+          "type": "integer"
+        },
+        "allowed_origins": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Origins",
+          "type": "array"
+        },
         "heartbeat_seconds": {
           "default": 15,
           "minimum": 1,
           "title": "Heartbeat Seconds",
           "type": "integer"
+        },
+        "websocket_message_requests": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Websocket Message Requests"
+        },
+        "websocket_message_window_seconds": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Websocket Message Window Seconds"
+        },
+        "websocket_message_burst": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Websocket Message Burst"
         }
       },
       "required": [
@@ -610,6 +747,7 @@
       "type": "object"
     },
     "FeaturePacksConfig": {
+      "additionalProperties": false,
       "properties": {
         "messaging": {
           "$ref": "#/$defs/MessagingPackConfig"
@@ -625,6 +763,7 @@
       "type": "object"
     },
     "GamingPackConfig": {
+      "additionalProperties": false,
       "properties": {
         "enabled": {
           "default": false,
@@ -658,6 +797,7 @@
       "type": "object"
     },
     "MediaConfig": {
+      "additionalProperties": false,
       "properties": {
         "enabled": {
           "default": false,
@@ -665,11 +805,8 @@
           "type": "boolean"
         },
         "backend": {
+          "const": "local",
           "default": "local",
-          "enum": [
-            "local",
-            "s3"
-          ],
           "title": "Backend",
           "type": "string"
         },
@@ -752,10 +889,31 @@
           "title": "Deduplicate",
           "type": "boolean"
         },
+        "deduplicate_scope": {
+          "default": "owner",
+          "enum": [
+            "owner",
+            "project"
+          ],
+          "title": "Deduplicate Scope",
+          "type": "string"
+        },
         "signed_urls_enabled": {
-          "default": true,
+          "default": false,
           "title": "Signed Urls Enabled",
           "type": "boolean"
+        },
+        "signing_secret": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Signing Secret"
         },
         "signed_url_ttl_seconds": {
           "default": 300,
@@ -776,6 +934,7 @@
       "type": "object"
     },
     "MessagingPackConfig": {
+      "additionalProperties": false,
       "properties": {
         "enabled": {
           "default": false,
@@ -809,6 +968,7 @@
       "type": "object"
     },
     "MongoDatabaseConfig": {
+      "additionalProperties": false,
       "properties": {
         "uri": {
           "title": "Uri",
@@ -845,6 +1005,7 @@
       "type": "object"
     },
     "MongoResourceConfig": {
+      "additionalProperties": false,
       "properties": {
         "database": {
           "default": "primary",
@@ -954,6 +1115,43 @@
           "default": null,
           "title": "Tenant Field"
         },
+        "owner_field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Owner Field"
+        },
+        "owner_actions": {
+          "items": {
+            "enum": [
+              "list",
+              "read",
+              "update",
+              "delete"
+            ],
+            "type": "string"
+          },
+          "title": "Owner Actions",
+          "type": "array"
+        },
+        "owner_bypass_permission": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Owner Bypass Permission"
+        },
         "soft_delete_field": {
           "anyOf": [
             {
@@ -1011,6 +1209,7 @@
       "type": "object"
     },
     "ObservabilityConfig": {
+      "additionalProperties": false,
       "properties": {
         "metrics_enabled": {
           "default": true,
@@ -1027,6 +1226,7 @@
       "type": "object"
     },
     "OperationCacheConfig": {
+      "additionalProperties": false,
       "properties": {
         "enabled": {
           "default": false,
@@ -1062,6 +1262,7 @@
       "type": "object"
     },
     "OperationConfig": {
+      "additionalProperties": false,
       "properties": {
         "name": {
           "title": "Name",
@@ -1095,6 +1296,11 @@
           "default": "primary",
           "title": "Database",
           "type": "string"
+        },
+        "public": {
+          "default": false,
+          "title": "Public",
+          "type": "boolean"
         },
         "permission": {
           "anyOf": [
@@ -1149,6 +1355,27 @@
           "default": false,
           "title": "Idempotency",
           "type": "boolean"
+        },
+        "idempotency_ttl_seconds": {
+          "default": 86400,
+          "maximum": 31536000,
+          "minimum": 60,
+          "title": "Idempotency Ttl Seconds",
+          "type": "integer"
+        },
+        "idempotency_cleanup_batch_size": {
+          "default": 1000,
+          "maximum": 50000,
+          "minimum": 10,
+          "title": "Idempotency Cleanup Batch Size",
+          "type": "integer"
+        },
+        "idempotency_max_response_bytes": {
+          "default": 262144,
+          "maximum": 16777216,
+          "minimum": 1024,
+          "title": "Idempotency Max Response Bytes",
+          "type": "integer"
         },
         "cache": {
           "$ref": "#/$defs/OperationCacheConfig"
@@ -1225,12 +1452,20 @@
       "type": "object"
     },
     "ProtectionConfig": {
+      "additionalProperties": false,
       "properties": {
         "max_request_body_bytes": {
           "default": 8388608,
           "minimum": 1024,
           "title": "Max Request Body Bytes",
           "type": "integer"
+        },
+        "trusted_proxy_cidrs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Trusted Proxy Cidrs",
+          "type": "array"
         },
         "max_concurrent_requests": {
           "default": 1000,
@@ -1273,11 +1508,42 @@
       "type": "object"
     },
     "RateLimitConfig": {
+      "additionalProperties": false,
       "properties": {
         "enabled": {
           "default": true,
           "title": "Enabled",
           "type": "boolean"
+        },
+        "pre_auth_enabled": {
+          "default": true,
+          "title": "Pre Auth Enabled",
+          "type": "boolean"
+        },
+        "pre_auth_requests": {
+          "default": 1200,
+          "minimum": 1,
+          "title": "Pre Auth Requests",
+          "type": "integer"
+        },
+        "pre_auth_window_seconds": {
+          "default": 60,
+          "minimum": 1,
+          "title": "Pre Auth Window Seconds",
+          "type": "integer"
+        },
+        "pre_auth_burst": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 300,
+          "title": "Pre Auth Burst"
         },
         "requests": {
           "default": 120,
@@ -1313,6 +1579,63 @@
           "default": null,
           "title": "Burst"
         },
+        "route_requests": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Route Requests"
+        },
+        "route_window_seconds": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Route Window Seconds"
+        },
+        "route_burst": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Route Burst"
+        },
+        "memory_max_buckets": {
+          "default": 50000,
+          "minimum": 100,
+          "title": "Memory Max Buckets",
+          "type": "integer"
+        },
+        "memory_idle_ttl_seconds": {
+          "default": 600,
+          "minimum": 10,
+          "title": "Memory Idle Ttl Seconds",
+          "type": "integer"
+        },
+        "memory_cleanup_interval_seconds": {
+          "default": 30,
+          "minimum": 1,
+          "title": "Memory Cleanup Interval Seconds",
+          "type": "integer"
+        },
         "fail_open": {
           "default": false,
           "title": "Fail Open",
@@ -1323,6 +1646,7 @@
       "type": "object"
     },
     "RealtimeConfig": {
+      "additionalProperties": false,
       "properties": {
         "backend": {
           "default": "memory",
@@ -1343,6 +1667,7 @@
       "type": "object"
     },
     "RequestParameterSpec": {
+      "additionalProperties": false,
       "properties": {
         "name": {
           "title": "Name",
@@ -1474,6 +1799,7 @@
       "type": "object"
     },
     "ResourceCacheConfig": {
+      "additionalProperties": false,
       "properties": {
         "enabled": {
           "anyOf": [
@@ -1544,6 +1870,7 @@
       "type": "object"
     },
     "ResourceConfig": {
+      "additionalProperties": false,
       "properties": {
         "database": {
           "default": "primary",
@@ -1728,6 +2055,43 @@
           "default": null,
           "title": "Tenant Field"
         },
+        "owner_field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Owner Field"
+        },
+        "owner_actions": {
+          "items": {
+            "enum": [
+              "list",
+              "read",
+              "update",
+              "delete"
+            ],
+            "type": "string"
+          },
+          "title": "Owner Actions",
+          "type": "array"
+        },
+        "owner_bypass_permission": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Owner Bypass Permission"
+        },
         "cache": {
           "$ref": "#/$defs/ResourceCacheConfig"
         },
@@ -1790,6 +2154,7 @@
       "type": "object"
     },
     "ResponseSpec": {
+      "additionalProperties": false,
       "properties": {
         "kind": {
           "default": "json",
@@ -1853,6 +2218,7 @@
       "type": "object"
     },
     "RoleConfig": {
+      "additionalProperties": false,
       "properties": {
         "permissions": {
           "items": {
@@ -1873,6 +2239,7 @@
       "type": "object"
     },
     "SQLStatementConfig": {
+      "additionalProperties": false,
       "properties": {
         "sql": {
           "title": "Sql",
@@ -1947,11 +2314,17 @@
       "type": "object"
     },
     "SecurityConfig": {
+      "additionalProperties": false,
       "properties": {
         "api_key_header": {
           "default": "X-API-Key",
           "title": "Api Key Header",
           "type": "string"
+        },
+        "bootstrap_enabled": {
+          "default": false,
+          "title": "Bootstrap Enabled",
+          "type": "boolean"
         },
         "bootstrap_admin_key": {
           "anyOf": [
@@ -1965,8 +2338,13 @@
           "default": null,
           "title": "Bootstrap Admin Key"
         },
-        "jwt_enabled": {
+        "bootstrap_one_time": {
           "default": true,
+          "title": "Bootstrap One Time",
+          "type": "boolean"
+        },
+        "jwt_enabled": {
+          "default": false,
           "title": "Jwt Enabled",
           "type": "boolean"
         },
@@ -1978,6 +2356,18 @@
           ],
           "title": "Jwt Provider",
           "type": "string"
+        },
+        "jwt_secret": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Jwt Secret"
         },
         "jwt_exp_minutes": {
           "default": 60,
@@ -2059,6 +2449,26 @@
           "title": "Jwt Project Claim",
           "type": "string"
         },
+        "jwt_require_project_claim": {
+          "default": true,
+          "title": "Jwt Require Project Claim",
+          "type": "boolean"
+        },
+        "jwt_trust_roles_claim": {
+          "default": false,
+          "title": "Jwt Trust Roles Claim",
+          "type": "boolean"
+        },
+        "jwt_trust_permissions_claim": {
+          "default": false,
+          "title": "Jwt Trust Permissions Claim",
+          "type": "boolean"
+        },
+        "jwt_trust_tenant_claim": {
+          "default": false,
+          "title": "Jwt Trust Tenant Claim",
+          "type": "boolean"
+        },
         "jwks_cache_ttl_seconds": {
           "default": 600,
           "minimum": 30,
@@ -2078,7 +2488,7 @@
           "type": "boolean"
         },
         "allow_websocket_query_api_key": {
-          "default": true,
+          "default": false,
           "title": "Allow Websocket Query Api Key",
           "type": "boolean"
         },
@@ -2106,11 +2516,18 @@
           "title": "Idempotency Header",
           "type": "string"
         },
-        "idempotency_pending_ttl_seconds": {
-          "default": 300,
-          "maximum": 86400,
-          "minimum": 30,
-          "title": "Idempotency Pending Ttl Seconds",
+        "api_key_cache_ttl_seconds": {
+          "default": 2.0,
+          "maximum": 60.0,
+          "minimum": 0.0,
+          "title": "Api Key Cache Ttl Seconds",
+          "type": "number"
+        },
+        "api_key_cache_max_entries": {
+          "default": 10000,
+          "maximum": 1000000,
+          "minimum": 100,
+          "title": "Api Key Cache Max Entries",
           "type": "integer"
         }
       },
@@ -2118,6 +2535,7 @@
       "type": "object"
     },
     "SocialPackConfig": {
+      "additionalProperties": false,
       "properties": {
         "enabled": {
           "default": false,
@@ -2151,6 +2569,7 @@
       "type": "object"
     },
     "WebhookDocConfig": {
+      "additionalProperties": false,
       "properties": {
         "name": {
           "title": "Name",
@@ -2211,6 +2630,7 @@
       "type": "object"
     }
   },
+  "additionalProperties": false,
   "properties": {
     "slug": {
       "title": "Slug",
@@ -2221,7 +2641,7 @@
       "type": "string"
     },
     "version": {
-      "default": "0.3.0",
+      "default": "0.4.0",
       "title": "Version",
       "type": "string"
     },
@@ -2258,6 +2678,39 @@
       },
       "title": "Cors Origins",
       "type": "array"
+    },
+    "cors_methods": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Cors Methods",
+      "type": "array"
+    },
+    "cors_headers": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Cors Headers",
+      "type": "array"
+    },
+    "cors_expose_headers": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Cors Expose Headers",
+      "type": "array"
+    },
+    "cors_allow_credentials": {
+      "default": false,
+      "title": "Cors Allow Credentials",
+      "type": "boolean"
+    },
+    "cors_max_age_seconds": {
+      "default": 600,
+      "maximum": 86400,
+      "minimum": 0,
+      "title": "Cors Max Age Seconds",
+      "type": "integer"
     },
     "databases": {
       "additionalProperties": {
@@ -2359,6 +2812,15 @@
     },
     "features": {
       "$ref": "#/$defs/FeaturePacksConfig"
+    },
+    "project_dir": {
+      "default": "",
+      "title": "Project Dir",
+      "type": "string"
+    },
+    "$schema": {
+      "type": "string",
+      "description": "Optional editor-only JSON Schema reference. Ignored by the runtime."
     }
   },
   "required": [
@@ -2366,6 +2828,8 @@
     "name",
     "databases"
   ],
-  "title": "ProjectConfig",
-  "type": "object"
+  "title": "JSON API Forge project configuration",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Complete merged configuration for one app/NAME project."
 }

@@ -2,33 +2,120 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
+import json
+from collections.abc import Callable
+from typing import Any
 
 from fastapi import HTTPException, Request
 
 
 class ConcurrencyGate:
+    """Bounded in-flight request gate with explicit reject-or-wait semantics."""
+
     def __init__(self, limit: int, wait_seconds: float, reject_when_saturated: bool = True):
-        self.semaphore = asyncio.Semaphore(max(1, limit))
-        self.wait_seconds = max(0.01, wait_seconds)
-        self.reject = reject_when_saturated
+        self.limit = max(1, int(limit))
+        self.wait_seconds = max(0.0, float(wait_seconds))
+        self.reject = bool(reject_when_saturated)
+        self._active = 0
+        self._condition = asyncio.Condition()
+
+    @property
+    def active(self) -> int:
+        return self._active
 
     async def __aenter__(self):
-        try:
-            await asyncio.wait_for(self.semaphore.acquire(), timeout=self.wait_seconds)
-        except asyncio.TimeoutError as exc:
-            raise HTTPException(status_code=503, detail="Server is temporarily saturated", headers={"Retry-After": "1"}) from exc
+        async with self._condition:
+            if self.reject and self._active >= self.limit:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Server is temporarily saturated",
+                    headers={"Retry-After": "1"},
+                )
+
+            async def wait_for_slot() -> None:
+                while self._active >= self.limit:
+                    await self._condition.wait()
+
+            if self._active >= self.limit:
+                try:
+                    await asyncio.wait_for(wait_for_slot(), timeout=self.wait_seconds)
+                except asyncio.TimeoutError as exc:
+                    raise HTTPException(
+                        status_code=503,
+                        detail="Server is temporarily saturated",
+                        headers={"Retry-After": "1"},
+                    ) from exc
+            self._active += 1
         return self
 
     async def __aexit__(self, exc_type, exc, tb):
-        self.semaphore.release()
+        async with self._condition:
+            self._active = max(0, self._active - 1)
+            self._condition.notify(1)
 
 
-def client_ip(request: Request) -> str:
-    return request.client.host if request.client else "0.0.0.0"
+def _address_in_rules(raw: str, rules: list[str]) -> bool:
+    try:
+        address = ipaddress.ip_address(raw)
+    except ValueError:
+        return False
+    for rule in rules:
+        try:
+            if address in ipaddress.ip_network(rule, strict=False):
+                return True
+        except ValueError:
+            if raw == rule:
+                return True
+    return False
 
 
-def ip_allowed(request: Request, allowed: list[str], denied: list[str]) -> bool:
-    raw = client_ip(request)
+def direct_peer(connection: Any) -> str:
+    client = getattr(connection, "client", None)
+    return client.host if client else "0.0.0.0"
+
+
+def client_ip(connection: Any, trusted_proxy_cidrs: list[str] | None = None) -> str:
+    """Return the effective client IP without blindly trusting forwarded headers.
+
+    X-Forwarded-For is considered only when the immediate peer belongs to an
+    explicitly trusted proxy network. The chain is walked from the nearest proxy
+    backwards and the first untrusted address becomes the effective client.
+    """
+    peer = direct_peer(connection)
+    trusted = trusted_proxy_cidrs or []
+    if not trusted or not _address_in_rules(peer, trusted):
+        return peer
+    headers = getattr(connection, "headers", {})
+    xff = headers.get("x-forwarded-for") if headers else None
+    if not xff:
+        return peer
+    chain = [part.strip() for part in xff.split(",") if part.strip()]
+    for candidate in reversed(chain):
+        try:
+            ipaddress.ip_address(candidate)
+        except ValueError:
+            continue
+        if not _address_in_rules(candidate, trusted):
+            return candidate
+    return chain[0] if chain else peer
+
+
+def request_is_https(connection: Any, trusted_proxy_cidrs: list[str] | None = None) -> bool:
+    scheme = getattr(getattr(connection, "url", None), "scheme", None) or getattr(connection, "scope", {}).get("scheme")
+    if str(scheme).lower() in {"https", "wss"}:
+        return True
+    peer = direct_peer(connection)
+    trusted = trusted_proxy_cidrs or []
+    if trusted and _address_in_rules(peer, trusted):
+        headers = getattr(connection, "headers", {})
+        forwarded = headers.get("x-forwarded-proto") if headers else None
+        if forwarded:
+            return forwarded.split(",", 1)[0].strip().lower() in {"https", "wss"}
+    return False
+
+
+def ip_allowed(connection: Any, allowed: list[str], denied: list[str], trusted_proxy_cidrs: list[str] | None = None) -> bool:
+    raw = client_ip(connection, trusted_proxy_cidrs)
     try:
         ip = ipaddress.ip_address(raw)
     except ValueError:
@@ -51,3 +138,109 @@ def ip_allowed(request: Request, allowed: list[str], denied: list[str]) -> bool:
             if raw == rule:
                 return True
     return False
+
+
+def host_allowed(host_header: str | None, allowed_hosts: list[str]) -> bool:
+    if not allowed_hosts or "*" in allowed_hosts:
+        return True
+    if not host_header:
+        return False
+    host = host_header.split(":", 1)[0].lower().rstrip(".")
+    for pattern in allowed_hosts:
+        pattern = pattern.lower().rstrip(".")
+        if pattern == host:
+            return True
+        if pattern.startswith("*.") and host.endswith(pattern[1:]) and host != pattern[2:]:
+            return True
+    return False
+
+
+class RequestBodyLimitMiddleware:
+    """Pure ASGI streaming request-size enforcement.
+
+    `Content-Length` is only an optimization; every `http.request` chunk is counted.
+    This also protects chunked/no-content-length uploads and generic custom endpoints
+    that would otherwise buffer an unbounded body in memory.
+    """
+
+    def __init__(self, app, limit_for_path: Callable[[str], int | None]):
+        self.app = app
+        self.limit_for_path = limit_for_path
+
+    async def __call__(self, scope: dict[str, Any], receive, send) -> None:
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
+
+        path = scope.get("path", "")
+        limit = self.limit_for_path(path)
+        if not limit:
+            await self.app(scope, receive, send)
+            return
+
+        headers = {k.lower(): v for k, v in scope.get("headers", [])}
+        raw_length = headers.get(b"content-length")
+        if raw_length is not None:
+            try:
+                if int(raw_length) > limit:
+                    await self._reject(send, limit)
+                    return
+            except ValueError:
+                await self._bad_length(send)
+                return
+
+        total = 0
+        exceeded = False
+
+        async def limited_receive():
+            nonlocal total, exceeded
+            message = await receive()
+            if message.get("type") == "http.request":
+                total += len(message.get("body", b""))
+                if total > limit:
+                    exceeded = True
+                    raise _BodyTooLarge
+            return message
+
+        response_started = False
+
+        async def tracking_send(message):
+            nonlocal response_started
+            if message.get("type") == "http.response.start":
+                response_started = True
+            await send(message)
+
+        try:
+            await self.app(scope, limited_receive, tracking_send)
+        except _BodyTooLarge:
+            # Endpoints normally consume the request before starting the response.
+            # If a custom ASGI component starts responding first, we cannot safely
+            # replace that response; close the body instead.
+            if not response_started:
+                await self._reject(send, limit)
+            elif exceeded:
+                await send({"type": "http.response.body", "body": b"", "more_body": False})
+
+    @staticmethod
+    async def _reject(send, limit: int) -> None:
+        payload = json.dumps({"detail": f"Request body exceeds max_request_body_bytes={limit}"}).encode("utf-8")
+        await send({
+            "type": "http.response.start",
+            "status": 413,
+            "headers": [(b"content-type", b"application/json"), (b"content-length", str(len(payload)).encode())],
+        })
+        await send({"type": "http.response.body", "body": payload, "more_body": False})
+
+    @staticmethod
+    async def _bad_length(send) -> None:
+        payload = b'{"detail":"Invalid Content-Length"}'
+        await send({
+            "type": "http.response.start",
+            "status": 400,
+            "headers": [(b"content-type", b"application/json"), (b"content-length", str(len(payload)).encode())],
+        })
+        await send({"type": "http.response.body", "body": payload, "more_body": False})
+
+
+class _BodyTooLarge(Exception):
+    pass

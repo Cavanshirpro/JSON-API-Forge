@@ -4,7 +4,8 @@
 
 | Version | Security support |
 |---|---|
-| 0.3.x | ✅ Current supported line |
+| 0.4.x | ✅ Current supported line |
+| 0.3.x | ⚠️ Superseded; upgrade recommended |
 | 0.2.x | ❌ Historical |
 | 0.1.x | ❌ Historical |
 

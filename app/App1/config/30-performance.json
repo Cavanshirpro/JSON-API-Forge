@@ -21,16 +21,8 @@
     "request_timeout_seconds": 30,
     "max_queue_wait_seconds": 1,
     "gzip_minimum_size": 1024,
-    "trusted_hosts": [
-      "*"
-    ]
+    "trusted_hosts": ["*"]
   },
-  "realtime": {
-    "backend": "memory",
-    "redis_prefix": "forge:events"
-  },
-  "observability": {
-    "metrics_enabled": true,
-    "metrics_path": "/metrics"
-  }
+  "realtime": {"backend": "memory", "redis_prefix": "forge:events"},
+  "observability": {"metrics_enabled": true, "metrics_path": "/metrics"}
 }

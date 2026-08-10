@@ -1,84 +1,9 @@
-# Supabase Auth + PostgreSQL
+# Supabase Auth and PostgreSQL
 
-Forge can use Supabase in two separate ways:
+External identity can be integrated through JWKS rather than sharing a local signing secret. Configure the JWKS URL, expected issuer/audience/algorithms and the claim paths used for subject/tenant/roles/permissions.
 
-1. **Database:** Supabase PostgreSQL is configured as an ordinary async PostgreSQL database alias (`postgresql+asyncpg://...`). Database credentials stay on the Forge server.
-2. **Authentication:** a web/mobile client can send its Supabase bearer JWT to Forge. Forge can validate an asymmetric JWT from a configured JWKS endpoint and map JWT claims into Forge roles, permissions and `tenant_id`.
+JWKS responses are cached with bounded TTL and refreshed once when an unknown `kid` suggests key rotation. Key metadata (`alg`, `use`, `key_ops`) is checked before verification.
 
-## Recommended split
+Trusting authorization claims is a deliberate security boundary. Map only claims your issuer controls. A valid external identity token should not automatically become an administrator without explicit Forge role/permission trust configuration.
 
-```text
-Web/mobile client
-  ├─ signs in with Supabase Auth
-  └─ sends Authorization: Bearer <access token>
-                ↓
-            Forge API
-  ├─ validates signature/issuer/audience
-  ├─ maps app_metadata roles/permissions
-  └─ talks to PostgreSQL using server credentials
-
-Discord bot / trusted plugin
-  └─ X-API-Key: narrow Forge key
-                ↓
-            Forge API
-```
-
-A public client never needs the PostgreSQL password or a privileged server key.
-
-## JSON configuration
-
-See `examples/supabase_auth/security-fragment.json`.
-
-Typical environment variables:
-
-```env
-SUPABASE_JWKS_URL=https://YOUR_PROJECT.supabase.co/auth/v1/.well-known/jwks.json
-SUPABASE_JWT_ISSUER=https://YOUR_PROJECT.supabase.co/auth/v1
-APP1_DATABASE_URL=postgresql+asyncpg://USER:PASSWORD@HOST:5432/postgres
-```
-
-Example claim mapping:
-
-```json
-{
-  "security": {
-    "jwt_enabled": true,
-    "jwt_provider": "jwks",
-    "jwt_roles_claim": "app_metadata.roles",
-    "jwt_permissions_claim": "app_metadata.permissions",
-    "jwt_tenant_claim": "app_metadata.tenant_id"
-  }
-}
-```
-
-Dotted claim paths are supported. A string claim becomes one role/permission; arrays become sets.
-
-## JWKS cache and key rotation
-
-Signing keys are cached for `jwks_cache_ttl_seconds` so every request does not call Supabase. If a JWT references an unknown `kid`, Forge forces one JWKS refresh before rejecting it, which helps during signing-key rotation.
-
-The configured algorithm allow-list, issuer and audience are checked. Do not disable these checks merely to make a malformed token work.
-
-## Local Forge JWT vs external JWKS
-
-`jwt_provider:"local_hs256"` keeps Forge's built-in `/admin/jwt` issuer.
-
-`jwt_provider:"jwks"` treats another identity provider such as Supabase as the issuer. Forge does **not** expose its local JWT-issuing endpoint in that mode, preventing two unrelated issuer models from being mixed accidentally.
-
-## v0.4 JWT default and project isolation
-
-JWT authentication is disabled by default. A Supabase/JWKS project must explicitly set `jwt_enabled:true`. JWKS mode does not need a local symmetric JWT signing secret because verification uses the configured issuer's public keys.
-
-If another project in the same Forge process uses `local_hs256`, give that project its own secret:
-
-```json
-{
-  "security": {
-    "jwt_enabled": true,
-    "jwt_provider": "local_hs256",
-    "jwt_secret": "$env:INTERNAL_ADMIN_JWT_SECRET"
-  }
-}
-```
-
-Do not intentionally reuse a local signing secret across unrelated projects simply because they share one Forge process. `forge doctor --production` reports global-secret fallback as an isolation warning.
+PostgreSQL remains a separate resource authorization boundary; tenant/owner constraints should also be applied at CRUD/RPC level rather than assuming the identity provider alone isolates rows.

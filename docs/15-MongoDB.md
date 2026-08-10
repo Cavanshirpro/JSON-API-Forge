@@ -1,54 +1,9 @@
-# MongoDB support
+# MongoDB
 
-Forge 0.3 adds a document-resource layer alongside SQLAlchemy relational resources.
+MongoDB integration uses PyMongo's asynchronous client. Configure named databases and declarative collection resources with allowed actions, filters, sorts and write fields.
 
-The implementation uses the modern **PyMongo Async API** (`AsyncMongoClient`), not Motor. MongoDB's current driver documentation recommends PyMongo Async as the Motor replacement.
+Tenant, owner and soft-delete fields are policy fields. They are injected/preserved by the server and must not be exposed as client-writable fields. v0.4.1 fixes the bundled Mongo example accordingly.
 
-## Configuration
+Owner actions can restrict list/read/update/delete to the authenticated subject with an optional explicit bypass permission. Tenant-bound resources require a principal tenant. IDs accept ObjectId-shaped strings or native string IDs.
 
-```json
-{
-  "mongo_databases": {
-    "documents": {
-      "uri": "$env:MONGODB_URL",
-      "database": "my_app",
-      "max_pool_size": 100,
-      "min_pool_size": 5,
-      "server_selection_timeout_ms": 5000
-    }
-  },
-  "mongo_resources": [
-    {
-      "database": "documents",
-      "collection": "profiles",
-      "path": "documents/profiles",
-      "writable_fields": ["user_id", "display_name", "settings"],
-      "allowed_filters": ["user_id"],
-      "allowed_sort": ["user_id"]
-    }
-  ]
-}
-```
-
-Generated routes use the same project authentication, permissions, rate limiting, cache namespace isolation and tenant model as relational resources.
-
-## Supported operations
-
-- list
-- count
-- read by `_id`
-- create
-- update
-- delete / soft delete
-- tenant field enforcement
-- basic safe filter operators
-- cache + generation invalidation
-- JSON Schema validation on create/update
-
-ObjectId values are serialized to strings in API responses.
-
-## Relational vs MongoDB
-
-Use PostgreSQL/MySQL when transactions, relational constraints, money/accounting and joins are central. MongoDB fits flexible documents, settings, telemetry-like documents and data whose schema evolves rapidly. Do not choose MongoDB merely to avoid designing data models.
-
-See `examples/mongodb-fragment.json`.
+Use a real Mongo service integration test for connection/pool/CRUD behavior; unit mocks are not sufficient for release confidence.

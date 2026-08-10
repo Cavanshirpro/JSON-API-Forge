@@ -10,7 +10,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import ORJSONResponse, Response
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
@@ -41,7 +41,6 @@ def _data_namespace(project: ProjectConfig, source: DataSourceConfig) -> str:
 
 
 async def _invoke_hook(handler, **kwargs):
-    """Invoke hooks without allowing synchronous user code to block the event loop."""
     if inspect.iscoroutinefunction(handler):
         return await handler(**kwargs)
     result = await asyncio.to_thread(handler, **kwargs)
@@ -126,8 +125,6 @@ def create_app(*, apps_dir: Path | str | None = None) -> FastAPI:
         if diagnostic.level == "warning":
             log.warning("config warning code=%s project=%s message=%s", diagnostic.code, diagnostic.project, diagnostic.message)
 
-    # GZip is process-wide in Starlette. Different thresholds would silently violate
-    # per-project config, so reject ambiguity instead of choosing an arbitrary value.
     gzip_values = {project.protection.gzip_minimum_size for project in forge.projects}
     if len(gzip_values) > 1:
         raise RuntimeError("All projects in one Forge process must use the same protection.gzip_minimum_size")
@@ -153,8 +150,6 @@ def create_app(*, apps_dir: Path | str | None = None) -> FastAPI:
             app.state.runtimes = runtimes
             yield
         finally:
-            # Cleanup each layer independently. One failed close must not prevent the
-            # remaining pools/tasks from being released.
             try:
                 await runtime_manager.close()
             except Exception:
@@ -174,7 +169,7 @@ def create_app(*, apps_dir: Path | str | None = None) -> FastAPI:
         title=forge.name,
         version=forge.version,
         description="Multi-project JSON-defined FastAPI backend runtime",
-        default_response_class=ORJSONResponse,
+        default_response_class=JSONResponse,
         lifespan=lifespan,
         docs_url=None,
         redoc_url=None,
@@ -226,11 +221,7 @@ def create_app(*, apps_dir: Path | str | None = None) -> FastAPI:
                     allowed_methods = {method.upper() for method in cfg.cors_methods}
                     if requested_method not in allowed_methods:
                         raise HTTPException(status_code=403, detail="CORS method is not allowed for this project")
-                    requested_headers = {
-                        value.strip().lower()
-                        for value in request.headers.get("access-control-request-headers", "").split(",")
-                        if value.strip()
-                    }
+                    requested_headers = {value.strip().lower() for value in request.headers.get("access-control-request-headers", "").split(",") if value.strip()}
                     allowed_headers = {value.lower() for value in cfg.cors_headers}
                     if "*" not in allowed_headers and not requested_headers.issubset(allowed_headers):
                         raise HTTPException(status_code=403, detail="CORS request headers are not allowed for this project")
@@ -249,13 +240,7 @@ def create_app(*, apps_dir: Path | str | None = None) -> FastAPI:
 
                 if cfg.rate_limit.enabled and cfg.rate_limit.pre_auth_enabled:
                     ip = client_ip(request, trusted_proxies)
-                    await _limiter_check(
-                        runtime,
-                        f"{cfg.slug}:preauth:ip:{ip}",
-                        cfg.rate_limit.pre_auth_requests,
-                        cfg.rate_limit.pre_auth_window_seconds,
-                        cfg.rate_limit.pre_auth_burst,
-                    )
+                    await _limiter_check(runtime, f"{cfg.slug}:preauth:ip:{ip}", cfg.rate_limit.pre_auth_requests, cfg.rate_limit.pre_auth_window_seconds, cfg.rate_limit.pre_auth_burst)
 
                 async with runtime.gate:
                     try:
@@ -267,7 +252,7 @@ def create_app(*, apps_dir: Path | str | None = None) -> FastAPI:
             status_code = response.status_code
             return response
         except HTTPException as exc:
-            response = ORJSONResponse(status_code=exc.status_code, content={"detail": exc.detail}, headers=exc.headers or {})
+            response = JSONResponse(status_code=exc.status_code, content={"detail": exc.detail}, headers=exc.headers or {})
             status_code = exc.status_code
             return response
         finally:
@@ -310,21 +295,9 @@ def create_app(*, apps_dir: Path | str | None = None) -> FastAPI:
             identity_subject = principal.subject if principal.kind != "anonymous" else f"ip:{client_ip(request, trusted_proxies)}"
             route = request.scope.get("route")
             route_template = getattr(route, "path", None) or request.url.path
-            await _limiter_check(
-                runtime,
-                f"{cfg.slug}:{principal.kind}:{identity_subject}:global",
-                principal.rate_requests or cfg.rate_limit.requests,
-                principal.rate_window_seconds or cfg.rate_limit.window_seconds,
-                principal.rate_burst or cfg.rate_limit.burst,
-            )
+            await _limiter_check(runtime, f"{cfg.slug}:{principal.kind}:{identity_subject}:global", principal.rate_requests or cfg.rate_limit.requests, principal.rate_window_seconds or cfg.rate_limit.window_seconds, principal.rate_burst or cfg.rate_limit.burst)
             if cfg.rate_limit.route_requests:
-                await _limiter_check(
-                    runtime,
-                    f"{cfg.slug}:{principal.kind}:{identity_subject}:route:{request.method}:{route_template}",
-                    cfg.rate_limit.route_requests,
-                    cfg.rate_limit.route_window_seconds or cfg.rate_limit.window_seconds,
-                    cfg.rate_limit.route_burst,
-                )
+                await _limiter_check(runtime, f"{cfg.slug}:{principal.kind}:{identity_subject}:route:{request.method}:{route_template}", cfg.rate_limit.route_requests, cfg.rate_limit.route_window_seconds or cfg.rate_limit.window_seconds, cfg.rate_limit.route_burst)
         return principal
 
     def require(principal, permission: str | None):
@@ -368,8 +341,7 @@ def create_app(*, apps_dir: Path | str | None = None) -> FastAPI:
                     continue
                 try:
                     shared[name] = "ok" if await service.ping() else "error"
-                    if shared[name] != "ok":
-                        project_ok = False
+                    if shared[name] != "ok": project_ok = False
                 except Exception as exc:
                     shared[name] = f"error:{type(exc).__name__}" if detailed else "error"
                     project_ok = False
@@ -377,10 +349,9 @@ def create_app(*, apps_dir: Path | str | None = None) -> FastAPI:
             if detailed:
                 checks[slug] = {"status": "ok" if project_ok else "degraded", "databases": databases, "mongo": mongo, "services": shared}
         payload = {"status": "ready" if all_ok else "degraded"}
-        if detailed:
-            payload["projects"] = checks
+        if detailed: payload["projects"] = checks
         if not all_ok:
-            return ORJSONResponse(status_code=503, content=payload)
+            return JSONResponse(status_code=503, content=payload)
         return payload
 
     if any(p.observability.metrics_enabled for p in forge.projects):
@@ -397,13 +368,5 @@ def create_app(*, apps_dir: Path | str | None = None) -> FastAPI:
             return Response(payload, media_type=content_type)
 
     for runtime in runtimes.values():
-        register_project_routes(
-            app=app,
-            runtime=runtime,
-            principal_for=principal_for,
-            require=require,
-            hide_internal_signature=_hide_internal_signature,
-            hidden_route=_hidden_route,
-            invoke_hook=_invoke_hook,
-        )
+        register_project_routes(app=app, runtime=runtime, principal_for=principal_for, require=require, hide_internal_signature=_hide_internal_signature, hidden_route=_hidden_route, invoke_hook=_invoke_hook)
     return app

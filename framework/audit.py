@@ -117,9 +117,6 @@ class AuditWriter:
                         break
                 await self._write_batch_with_retry(batch)
             except asyncio.CancelledError:
-                # Events already removed from the queue cannot be put back safely
-                # during interpreter shutdown. A cancellation before successful write
-                # is therefore visible as a drop.
                 if batch:
                     self.dropped += len(batch)
                     observe_audit_drop(len(batch))

@@ -14,7 +14,7 @@
       "database": "documents",
       "collection": "profiles",
       "path": "documents/profiles",
-      "writable_fields": ["user_id", "display_name", "settings", "tenant_id"],
+      "writable_fields": ["user_id", "display_name", "settings"],
       "allowed_filters": ["user_id", "display_name"],
       "filter_operators": ["eq", "ne", "in"],
       "allowed_sort": ["user_id", "display_name"],

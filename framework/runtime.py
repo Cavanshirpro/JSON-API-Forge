@@ -32,23 +32,13 @@ class ProjectRuntime:
 
 
 class RuntimeManager:
-    """Own lifecycle and lookup of per-project runtime services.
-
-    Startup is transactional at the process level: if project N fails, services that
-    were opened for projects 1..N are closed before the exception propagates.
-    """
-
     def __init__(self, forge: ForgeConfig):
         self.forge = forge
         self.runtimes = {project.slug: ProjectRuntime(config=project) for project in forge.projects}
         self._started = False
 
     def for_path(self, path: str) -> ProjectRuntime | None:
-        matches = [
-            runtime
-            for runtime in self.runtimes.values()
-            if path == runtime.config.api_prefix or path.startswith(runtime.config.api_prefix.rstrip("/") + "/")
-        ]
+        matches = [runtime for runtime in self.runtimes.values() if path == runtime.config.api_prefix or path.startswith(runtime.config.api_prefix.rstrip("/") + "/")]
         return max(matches, key=lambda runtime: len(runtime.config.api_prefix or ""), default=None)
 
     def body_limit_for_path(self, path: str) -> int | None:
@@ -65,17 +55,9 @@ class RuntimeManager:
                     raise RuntimeError(f"Project {cfg.slug}: Redis rate limiter requires REDIS_URL")
                 runtime.limiter = RedisRateLimiter(settings.redis_url, prefix=f"json-api-forge:rl:{cfg.slug}")
             else:
-                runtime.limiter = MemoryRateLimiter(
-                    max_buckets=cfg.rate_limit.memory_max_buckets,
-                    idle_ttl_seconds=cfg.rate_limit.memory_idle_ttl_seconds,
-                    cleanup_interval_seconds=cfg.rate_limit.memory_cleanup_interval_seconds,
-                )
+                runtime.limiter = MemoryRateLimiter(max_buckets=cfg.rate_limit.memory_max_buckets, idle_ttl_seconds=cfg.rate_limit.memory_idle_ttl_seconds, cleanup_interval_seconds=cfg.rate_limit.memory_cleanup_interval_seconds)
             runtime.cache = build_cache(cfg.cache, settings.redis_url)
-            runtime.gate = ConcurrencyGate(
-                cfg.protection.max_concurrent_requests,
-                cfg.protection.max_queue_wait_seconds,
-                cfg.protection.reject_when_saturated,
-            )
+            runtime.gate = ConcurrencyGate(cfg.protection.max_concurrent_requests, cfg.protection.max_queue_wait_seconds, cfg.protection.reject_when_saturated)
             runtime.data_sources = DataSourceManager(cfg)
             runtime.event_hub = build_event_hub(cfg.realtime.backend, settings.redis_url, cfg.realtime.redis_prefix, cfg.slug)
             if cfg.media.enabled:
@@ -91,14 +73,7 @@ class RuntimeManager:
                 await self._start_runtime(runtime)
                 started.append(runtime)
                 cfg = runtime.config
-                log.info(
-                    "Loaded project=%s resources=%d operations=%d data_sources=%d prefix=%s",
-                    cfg.slug,
-                    len(cfg.resources),
-                    len(cfg.operations),
-                    len(cfg.data_sources),
-                    cfg.api_prefix,
-                )
+                log.info("Loaded project=%s resources=%d operations=%d data_sources=%d prefix=%s", cfg.slug, len(cfg.resources), len(cfg.operations), len(cfg.data_sources), cfg.api_prefix)
             self._started = True
         except Exception:
             for runtime in reversed(started):
@@ -107,17 +82,9 @@ class RuntimeManager:
 
     async def _close_runtime(self, runtime: ProjectRuntime, *, suppress: bool) -> None:
         errors: list[Exception] = []
-        for attr, close_name in (
-            ("event_hub", "close"),
-            ("data_sources", "close"),
-            ("cache", "close"),
-            ("limiter", "close"),
-            ("mongo_registry", "dispose"),
-            ("registry", "dispose"),
-        ):
+        for attr, close_name in (("event_hub", "close"), ("data_sources", "close"), ("cache", "close"), ("limiter", "close"), ("mongo_registry", "dispose"), ("registry", "dispose")):
             service = getattr(runtime, attr, None)
-            if service is None:
-                continue
+            if service is None: continue
             try:
                 await getattr(service, close_name)()
             except Exception as exc:

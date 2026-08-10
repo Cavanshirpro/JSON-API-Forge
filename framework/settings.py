@@ -38,13 +38,7 @@ class Settings(BaseSettings):
 
 
 def load_settings(*, root: Path | str | None = None, **overrides: Any) -> Settings:
-    """Load process settings relative to a deployment root.
-
-    Installed wheels must not accidentally search for `.env` beside site-packages.
-    The default root is the current working directory; CLI commands may pass an
-    explicit project root.
-    """
-
+    """Load process settings relative to a deployment root."""
     env_file = Path(root).resolve() / ".env" if root is not None else Path.cwd() / ".env"
     class RootSettings(Settings):
         model_config = SettingsConfigDict(env_file=env_file, extra="ignore", case_sensitive=False)

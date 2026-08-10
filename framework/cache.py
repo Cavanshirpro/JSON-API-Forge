@@ -143,9 +143,6 @@ class CacheManager:
             return await self.backend.generation(namespace)
         except Exception:
             if self.fail_open:
-                # Generation is the invalidation authority. Falling back to generation
-                # zero could resurrect stale L1 entries during a Redis outage. None
-                # means bypass cache for this request instead.
                 return None
             raise
 
@@ -179,7 +176,7 @@ class CacheManager:
         if isinstance(parsed, dict) and parsed.get("__forge_cache_v") == 1 and "value" in parsed:
             state = "fresh" if time.time() <= float(parsed.get("fresh_until", 0)) else "stale"
             return parsed["value"], state
-        return parsed, "fresh"  # backwards compatibility with v0.2 cache values
+        return parsed, "fresh"
 
     async def get_json(self, key: str) -> Any | None:
         value, state = await self.get_json_state(key)
@@ -224,9 +221,6 @@ class CacheManager:
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            # Stale-while-revalidate is intentionally off the request path. A loader
-            # failure keeps serving the bounded stale entry and is observable rather
-            # than becoming an unhandled background-task exception.
             log.warning("Background cache refresh failed key=%s error=%s", key, type(exc).__name__, exc_info=True)
         finally:
             async with self._refresh_guard: self._refreshing.discard(key)

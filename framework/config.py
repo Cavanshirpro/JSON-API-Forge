@@ -104,13 +104,10 @@ class RateLimitConfig(ForgeModel):
     pre_auth_requests: int = Field(default=1200, ge=1)
     pre_auth_window_seconds: int = Field(default=60, ge=1)
     pre_auth_burst: int | None = Field(default=300, ge=1)
-    # Principal-global budget. This is intentionally independent from concrete
-    # request paths so IDs cannot be rotated to create fresh buckets.
     requests: int = Field(default=120, ge=1)
     window_seconds: int = Field(default=60, ge=1)
     backend: Literal["memory", "redis"] = "memory"
     burst: int | None = Field(default=None, ge=1)
-    # Optional second budget for a normalized FastAPI route template.
     route_requests: int | None = Field(default=None, ge=1)
     route_window_seconds: int | None = Field(default=None, ge=1)
     route_burst: int | None = Field(default=None, ge=1)
@@ -161,8 +158,6 @@ class SecurityConfig(ForgeModel):
     allowed_ips: list[str] = Field(default_factory=list)
     denied_ips: list[str] = Field(default_factory=list)
     idempotency_header: str = "Idempotency-Key"
-    # Small bounded process-local cache for successful API-key metadata lookups.
-    # DB remains authoritative; short TTL bounds cross-worker revoke propagation.
     api_key_cache_ttl_seconds: float = Field(default=2.0, ge=0.0, le=60.0)
     api_key_cache_max_entries: int = Field(default=10_000, ge=100, le=1_000_000)
 
@@ -403,8 +398,6 @@ class DataSourceConfig(ForgeModel):
     enabled: bool = True
     path: str | None = None
     type: Literal["json_file", "yaml_file", "csv_file", "static", "http"]
-    # `public` applies only to reads. Mutations remain private unless
-    # `public_write=true` is explicitly selected.
     public: bool = False
     public_write: bool = False
     permission: str | None = None
@@ -571,7 +564,7 @@ class FeaturePacksConfig(ForgeModel):
 class ProjectConfig(ForgeModel):
     slug: str
     name: str
-    version: str = "0.4.0"
+    version: str = "0.4.1"
     enabled: bool = True
     api_prefix: str | None = None
     docs_enabled: bool = True
@@ -621,7 +614,7 @@ class ProjectConfig(ForgeModel):
 
 class ForgeConfig(ForgeModel):
     name: str = "JSON API Forge"
-    version: str = "0.4.0"
+    version: str = "0.4.1"
     projects: list[ProjectConfig]
 
 
@@ -645,7 +638,6 @@ def _load_project_dir(project_dir: Path, *, dotenv: dict[str, str | None] | None
         for fragment in sorted(config_dir.glob("*.json")):
             raw = _deep_merge(raw, _load_json(fragment))
 
-    # `$schema` is editor metadata, not a runtime configuration field.
     raw.pop("$schema", None)
     raw.setdefault("slug", project_dir.name.lower())
     raw.setdefault("name", project_dir.name)
@@ -654,7 +646,6 @@ def _load_project_dir(project_dir: Path, *, dotenv: dict[str, str | None] | None
     try:
         return ProjectConfig.model_validate(raw)
     except ValidationError as exc:
-        # Do not render resolved input values: they can contain secrets loaded from $env.
         errors = []
         for error in exc.errors(include_input=False, include_context=False, include_url=False):
             location = ".".join(str(part) for part in error.get("loc", ())) or "<root>"

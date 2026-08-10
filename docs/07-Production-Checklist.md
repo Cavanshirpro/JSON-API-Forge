@@ -1,20 +1,9 @@
-# Production checklist
+# Production Checklist
 
-- [ ] Python version supported by all dependencies
-- [ ] `.env` excluded from Git and public web roots
-- [ ] bootstrap key generated randomly
-- [ ] JWT secret generated randomly if JWT is enabled
-- [ ] production database is PostgreSQL/MySQL rather than SQLite for concurrent traffic
-- [ ] database TLS configured where required
-- [ ] least-privilege DB user
-- [ ] exact CORS origins
-- [ ] HTTPS enforced
-- [ ] reverse-proxy/body-size/timeouts configured
-- [ ] each plugin has its own API key
-- [ ] API keys have minimum permissions
-- [ ] migration/backup plan exists
-- [ ] logs do not contain secrets
-- [ ] `/docs` exposure is intentional
-- [ ] shared/distributed rate limiting added before multi-worker high-traffic deployment
-- [ ] monitoring/alerts added
-- [ ] restore-from-backup tested
+Before production: run `forge validate`, `forge doctor --production`, `forge migrate`, schema drift checks, full tests and a package/container build. Supply real secrets outside Git and use `INTERNAL_SCHEMA_MODE=validate` after migration.
+
+Review: TLS and proxy trust; CORS/hosts; public endpoints; API key/JWT delegation; database pools; tenant/owner policies; rate/concurrency budgets; request size; egress destinations; media quotas; readiness/operator token; audit capacity; backup/restore; log redaction; database indexes and migration rollback.
+
+Prefer native ASGI. If multiple workers/hosts need shared rate limiting/cache/realtime, configure Redis rather than memory. If media must be shared across hosts, local filesystem is insufficient.
+
+Do not tag an official release while required canonical CI is red.

@@ -11,7 +11,7 @@ body:
     id: version
     attributes:
       label: JSON API Forge version
-      placeholder: 0.4.0
+      placeholder: 0.4.1
     validations:
       required: true
   - type: input

@@ -1,49 +1,39 @@
-# Release Checklist
+# Release Checklist — v0.4.1
 
-This checklist is for Cavanşir Qurbanzadə (`@Cavanshirpro`) and future authorized maintainers of the canonical repository.
+This checklist is for the Project Owner and authorized maintainers of the canonical repository.
 
 ## Version and source
-
-- [ ] `VERSION`, `pyproject.toml`, client package metadata, `CHANGELOG.md` and `RELEASE.md` match the intended tag.
-- [ ] `forge validate` succeeds.
+- [ ] `VERSION`, `pyproject.toml`, TypeScript metadata, `CITATION.cff`, `CHANGELOG.md`, `README.md` and `RELEASE.md` identify v0.4.1 where current-version metadata is intended.
+- [ ] `forge validate` succeeds and discovers only intended projects.
 - [ ] `forge doctor` reports no errors.
-- [ ] `forge doctor --production` has been run against a representative production configuration with real secrets supplied outside Git.
-- [ ] `forge schema` produces no uncommitted schema drift.
-- [ ] Python sources compile with `python -m compileall -q framework app tests`.
+- [ ] `forge doctor --production` is exercised with representative production secrets supplied outside Git.
+- [ ] `forge schema` creates no schema drift.
+- [ ] `python -m compileall -q framework app tests scripts` succeeds.
+- [ ] `python scripts/check_manifest.py` succeeds from the tracked release tree.
 
 ## Tests and build gates
-
-- [ ] Python 3.11/3.12/3.13/3.14 CI jobs are green.
-- [ ] `forge migrate` was exercised in the live SQL integration environment and production startup can use schema `validate` mode after migration.
-- [ ] Aggregate branch-aware coverage is >=75%.
-- [ ] `python scripts/check_critical_coverage.py coverage.json` passes its file-specific floors (>=80% for high-risk runtime modules and >=75% for `framework/routers/project.py`).
-- [ ] Critical security/reliability paths were reviewed, not only the aggregate percentage.
-- [ ] PostgreSQL transaction/idempotency tests pass against a real PostgreSQL service.
-- [ ] Redis distributed rate-limit/locking tests pass against a real Redis service.
-- [ ] MongoDB CRUD/tenant isolation tests pass against a real MongoDB service.
-- [ ] TypeScript reference client type-checks.
-- [ ] Python wheel/sdist build succeeds.
-- [ ] Docker image builds successfully.
-- [ ] CodeQL/security automation is not red.
+- [ ] Python 3.11/3.12/3.13/3.14 jobs are green.
+- [ ] Aggregate branch-aware coverage and high-risk per-module coverage gates pass.
+- [ ] PostgreSQL transaction/idempotency and migration tests pass against PostgreSQL 17.
+- [ ] Redis distributed limiter/event tests pass against Redis 8.
+- [ ] Mongo CRUD/tenant isolation tests pass against MongoDB 8.
+- [ ] TypeScript reference client type-checks on Node 22 / TypeScript 7.
+- [ ] Wheel/sdist build succeeds.
+- [ ] Docker image builds.
+- [ ] CodeQL is not red.
 - [ ] No official tag is published while required CI is red.
 
-## Security and release hygiene
-
-- [ ] `.env`, credentials, private keys, database files, logs, caches, local media, `.coverage`, `.pytest_cache`, `__pycache__`, build directories and egg-info are absent from the release tree.
-- [ ] `.env.example` contains no usable secret value.
-- [ ] Bootstrap behavior, credential delegation/impersonation, API-key auth-cache TTL, owner/tenant policies, public endpoints, proxy trust, rate budgets and idempotent operations were reviewed for configuration mistakes.
-- [ ] Documentation does not claim cross-system exactly-once semantics, durable realtime delivery, unimplemented object-storage support, or attacker-safe arbitrary SQL execution.
-- [ ] `LICENSE`, `NOTICE.md`, `LICENSE-FAQ.md`, `OWNERSHIP.md`, `AUTHORS.md` and contributor documents are present.
-- [ ] Dependency changes and GitHub security alerts were reviewed.
-- [ ] Canonical repository links and owner/successor details are accurate.
-- [ ] `MANIFEST.sha256` is regenerated only after all source/doc changes and cleanup are complete.
+## Security / hygiene
+- [ ] No `.env`, credentials, keys, DBs, logs, local media, caches, coverage output, build output or `__pycache__` exists in the release tree.
+- [ ] `.env.example` contains no usable secret.
+- [ ] Bootstrap, delegation, JWT/JWKS, tenant/owner policies, proxy trust, rate limits, idempotency and public endpoints are reviewed.
+- [ ] Docs do not overclaim exactly-once external delivery, durable realtime, object-storage support or attacker-safe arbitrary SQL.
+- [ ] `LICENSE`, notices, ownership and contributor documents are present.
+- [ ] Dependency/security alerts are reviewed.
 
 ## Publish
-
-- [ ] Commit the intended v0.4.0 tree to `main` after v0.3.0 history.
-- [ ] Push `main` and confirm CI is green.
-- [ ] Create annotated tag `v0.4.0` from that exact commit.
-- [ ] Push the tag and wait for the tag release gate to succeed.
-- [ ] Publish the GitHub Release using `RELEASE.md` as the release body.
-- [ ] Prefer GitHub's source ZIP/tar.gz for source-only distribution; add owner-published wheel/sdist or container references only when intentionally supported.
-- [ ] If attaching a custom archive/binary, include SHA-256 and preferably provenance/signature/attestation.
+- [ ] Commit the exact v0.4.1 tree to `main` after v0.4.0.
+- [ ] Wait for `main` CI to pass.
+- [ ] Create annotated tag `v0.4.1` from that exact commit and push it.
+- [ ] Wait for the tag release gate.
+- [ ] Publish the GitHub Release using `RELEASE.md`.

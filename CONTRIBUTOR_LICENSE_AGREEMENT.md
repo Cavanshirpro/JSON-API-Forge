@@ -2,51 +2,32 @@
 
 Version 1.1 — 7 August 2026
 
-This Contributor License Agreement is designed to keep JSON API Forge centrally maintainable and to preserve the Project Owner's ability to change the project's licensing model or transfer the project to a future company or other lawful successor.
+This CLA keeps JSON API Forge centrally maintainable and preserves the Project Owner's ability to change future licensing or transfer the project to a lawful successor.
 
-By intentionally submitting a pull request, patch, commit, documentation change, schema, example, test, or other material for inclusion in JSON API Forge (a **Contribution**), you agree to the following terms unless the Project Owner has accepted a different written agreement for that Contribution.
+By intentionally submitting a pull request, patch, commit, documentation change, schema, example, test or other material for inclusion in JSON API Forge (a **Contribution**), you agree to these terms unless a different written agreement applies.
 
 ## 1. Project Owner
+**Project Owner** means **Cavanşir Qurbanzadə (@Cavanshirpro)** and any lawful successor or assignee acquiring the relevant JSON API Forge project rights. The canonical repository is `https://github.com/Cavanshirpro/JSON-API-Forge` unless officially replaced.
 
-**Project Owner** means **Cavanşir Qurbanzadə (@Cavanshirpro)** and any lawful successor or assignee that acquires the relevant JSON API Forge project rights.
+## 2. Copyright and license grant
+You retain copyright in your Contribution unless a separate written agreement states otherwise. You grant the Project Owner a worldwide, perpetual, irrevocable, non-exclusive, royalty-free, fully paid-up, sublicensable, transferable and assignable license to reproduce, use, modify, prepare derivatives of, display, perform, distribute, sublicense, commercialize and otherwise exploit your Contribution in source or object form as part of JSON API Forge.
 
-The current canonical repository is `https://github.com/Cavanshirpro/JSON-API-Forge`, or a successor repository officially designated by the Project Owner.
-
-## 2. Copyright ownership and license grant
-
-You retain copyright ownership in your Contribution unless a separate written agreement states otherwise.
-
-You grant the Project Owner a worldwide, perpetual, irrevocable, non-exclusive, royalty-free, fully paid-up, sublicensable, **transferable and assignable** license to reproduce, use, modify, prepare derivative works of, publicly display, publicly perform, distribute, sublicense, commercialize, and otherwise exploit your Contribution, in source or object form, as part of or in connection with JSON API Forge.
-
-This grant expressly includes the right to **relicense your Contribution** as part of JSON API Forge under the project's current license, future versions of that license, an OSI-approved open-source license, a proprietary/commercial license, a dual-license or multi-license model, or other licensing terms selected by the Project Owner.
-
-You also agree that the Project Owner may transfer or assign the rights granted by this CLA, in whole or in relevant part, to a company, foundation, purchaser, successor, or other legal entity that acquires or controls JSON API Forge. This clause transfers the contractual license rights granted by you; it does not by itself transfer your underlying copyright ownership.
+This includes the right to relicense the Contribution as part of JSON API Forge under the current license, future revisions, an OSI-approved license, proprietary/commercial terms, dual/multi-licensing or other terms selected by the Project Owner. The contractual rights granted under this CLA may transfer with the project to a company, foundation, purchaser or other lawful successor; that does not itself transfer your underlying copyright ownership.
 
 ## 3. Patent grant
+To the extent you control patent claims necessarily infringed by your Contribution, you grant the Project Owner, lawful successors/assignees and recipients of authorized releases a worldwide, perpetual, irrevocable, royalty-free patent license to exercise those claims as authorized by the applicable project license. This patent grant terminates for a party initiating patent litigation alleging the Contribution or JSON API Forge infringes that party's patent.
 
-To the extent you control patent claims necessarily infringed by your Contribution, you grant the Project Owner, its lawful successors/assignees, and recipients of authorized JSON API Forge releases a worldwide, perpetual, irrevocable, royalty-free patent license to make, use, sell, offer for sale, import, and otherwise exercise rights in the Contribution as authorized by the applicable project license. This patent grant terminates for a party that initiates patent litigation alleging that the Contribution or JSON API Forge infringes that party's patent.
-
-## 4. Your representations
-
-You represent that:
-
-- you are legally entitled to submit the Contribution and grant these rights;
-- if your employer or another party owns or controls rights in the Contribution, you have obtained the authorization necessary to submit it under this CLA;
-- to your knowledge, the Contribution does not intentionally include material that you are not permitted to contribute; and
-- you will identify significant third-party material and its applicable license when relevant.
+## 4. Representations
+You represent that you may submit the Contribution and grant these rights; that any employer or other rights holder has authorized you where necessary; that you do not knowingly include material you cannot contribute; and that significant third-party material will be identified with its license.
 
 ## 5. No obligation to accept
+The Project Owner need not accept, merge, maintain, publish or use a Contribution. Acceptance does not create employment, partnership, agency, ownership of the project, or release authority.
 
-The Project Owner is not required to accept, merge, maintain, publish, or use any Contribution. Acceptance does not create employment, partnership, agency, or a right to become a maintainer.
+## 6. Distribution authority
+Submitting a Contribution does not authorize you to publish an Official Release or alternative distribution. Your use remains governed by the project license.
 
-## 6. Project licensing and distribution authority
-
-Submitting a Contribution does not give you authority to publish an Official Release or an alternative distribution of JSON API Forge. Your own use of JSON API Forge remains governed by the project license applicable to the version you use.
-
-## 7. How acceptance is recorded
-
-Unless a separate signature process is introduced, submitting a pull request with the repository's CLA acknowledgement checked and intentionally contributing the material constitutes your acknowledgement of this CLA to the extent permitted by applicable law. The Project Owner may require a separate signed agreement for significant, corporate, or legally sensitive contributions.
+## 7. Acceptance record
+Unless a separate signature process is introduced, intentionally submitting a pull request with the repository CLA acknowledgement constitutes acceptance to the extent permitted by applicable law. A separate signed agreement may be required for significant corporate or legally sensitive contributions.
 
 ## 8. Entire contributor agreement
-
-This CLA governs the rights granted to the Project Owner for Contributions unless the parties enter into a different written contributor agreement. If a provision is unenforceable, it should be limited to the minimum extent necessary while the remaining provisions continue in effect.
+This CLA governs the rights granted for Contributions unless the parties enter another written contributor agreement. If a provision is unenforceable, it should be limited while the remainder stays effective.

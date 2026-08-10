@@ -77,7 +77,6 @@ class DataSourceManager:
             raise HTTPException(status_code=502, detail="Plain HTTP egress is disabled for this data source")
         if source.allow_private_networks:
             return
-
         host = parsed.hostname
         try:
             addresses = [str(ipaddress.ip_address(host))]

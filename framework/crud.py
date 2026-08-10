@@ -57,9 +57,6 @@ def _write_payload(
     data = {key: value for key, value in payload.items() if key in allowed}
 
     if mode == "replace":
-        # PUT replaces the writable representation. Missing nullable fields become
-        # null; missing required writable fields are rejected rather than silently
-        # retaining the previous value (PATCH semantics).
         for name in sorted(allowed):
             if name in data:
                 continue

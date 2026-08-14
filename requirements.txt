@@ -21,7 +21,7 @@ aiosqlite>=0.21,<1.0
 
 # Security
 PyJWT[crypto]>=2.10,<3.0
-cryptography>=45,<47
+cryptography>=45,<51
 
 # MongoDB asynchronous driver
 pymongo>=4.13,<5.0

@@ -2643,7 +2643,7 @@
       "type": "string"
     },
     "version": {
-      "default": "0.4.2",
+      "default": "0.5.0",
       "title": "Version",
       "type": "string"
     },

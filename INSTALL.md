@@ -1,6 +1,6 @@
 # Installation
 
-JSON API Forge requires Python 3.11–3.14 and Git. Python 3.13 is the recommended production baseline for v0.4.2.
+JSON API Forge requires Python 3.11–3.14 and Git. Python 3.13 is the recommended production baseline for v0.5.0.
 
 ## Clone and create an isolated environment
 

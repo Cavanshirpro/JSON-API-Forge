@@ -3,6 +3,7 @@ name: Python library build
 on:
   push:
     branches: [python-library]
+    tags: ["v0.4.*"]
   pull_request:
     branches: [python-library]
   workflow_dispatch:
@@ -17,18 +18,20 @@ concurrency:
 jobs:
   preflight:
     name: Version, lint and source preflight
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.13"
+          python-version: "3.14"
           cache: pip
       - name: Verify synchronized versions and branch contract
         run: |
           python - <<'PY'
-          import pathlib, tomllib
+          import os, pathlib, tomllib
           root = pathlib.Path.cwd()
           package = tomllib.loads((root / "pyproject.toml").read_text())["project"]["version"]
           scope = {}
@@ -36,6 +39,8 @@ jobs:
           versions = {package, (root / "VERSION").read_text().strip(), scope["__version__"]}
           if versions != {"0.4.2"}:
               raise SystemExit(f"version mismatch: {sorted(versions)}")
+          if os.environ.get("GITHUB_REF_TYPE") == "tag" and os.environ.get("GITHUB_REF_NAME") != f"v{package}":
+              raise SystemExit(f"tag {os.environ.get('GITHUB_REF_NAME')} does not match package v{package}")
           if not (root / "json_api_forge/py.typed").is_file():
               raise SystemExit("py.typed is missing")
           PY
@@ -43,9 +48,9 @@ jobs:
         run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]"
       - name: Lint, format, compile and manifest
         run: |
-          ruff format --check framework json_api_forge tests scripts forge.py main.py run.py passenger_wsgi.py
-          ruff check framework json_api_forge tests scripts forge.py main.py run.py passenger_wsgi.py
-          python -m compileall -q framework json_api_forge tests
+          ruff format --check framework json_api_forge clients/python tests scripts forge.py main.py run.py passenger_wsgi.py
+          ruff check framework json_api_forge clients/python tests scripts forge.py main.py run.py passenger_wsgi.py
+          python -m compileall -q framework json_api_forge clients/python tests
           python scripts/check_manifest.py
           python -m pip check
 
@@ -58,18 +63,22 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {os: ubuntu-latest, python: "3.11"}
-          - {os: ubuntu-latest, python: "3.12"}
-          - {os: ubuntu-latest, python: "3.13"}
-          - {os: ubuntu-latest, python: "3.14"}
-          - {os: windows-latest, python: "3.11"}
-          - {os: windows-latest, python: "3.13"}
-          - {os: windows-latest, python: "3.14"}
-          - {os: macos-14, python: "3.11"}
-          - {os: macos-14, python: "3.13"}
-          - {os: macos-14, python: "3.14"}
+          - {os: ubuntu-24.04, python: "3.11"}
+          - {os: ubuntu-24.04, python: "3.12"}
+          - {os: ubuntu-24.04, python: "3.13"}
+          - {os: ubuntu-24.04, python: "3.14"}
+          - {os: ubuntu-24.04-arm, python: "3.11"}
+          - {os: ubuntu-24.04-arm, python: "3.14"}
+          - {os: windows-2022, python: "3.11"}
+          - {os: windows-2025, python: "3.14"}
+          - {os: macos-15-intel, python: "3.11"}
+          - {os: macos-15-intel, python: "3.14"}
+          - {os: macos-15, python: "3.11"}
+          - {os: macos-15, python: "3.14"}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
@@ -84,10 +93,12 @@ jobs:
   coverage:
     name: Coverage and critical modules
     needs: preflight
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
@@ -98,20 +109,44 @@ jobs:
           python scripts/check_critical_coverage.py coverage.json
 
   artifacts:
-    name: Reproducible wheel, sdist and bundle
+    name: Reproducible wheel, validated sdist and bundle
     needs: [test, coverage]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
           cache: pip
       - name: Build and inspect distributions
+        shell: bash
         run: |
+          set -euo pipefail
           python -m pip install --upgrade pip build twine
-          python -m build
+          export SOURCE_DATE_EPOCH="$(git log -1 --pretty=%ct)"
+          python -m build --outdir build-first
+          python -m build --outdir build-second
+          cmp build-first/*.whl build-second/*.whl
+          python - <<'PY'
+          import pathlib, tarfile
+
+          first = next(pathlib.Path("build-first").glob("*.tar.gz"))
+          second = pathlib.Path("build-second", first.name)
+          def payload(path):
+              with tarfile.open(path, "r:gz") as archive:
+                  result = {}
+                  for member in archive.getmembers():
+                      data = archive.extractfile(member).read() if member.isfile() else None
+                      result[member.name] = (member.type, member.mode, member.linkname, data)
+                  return result
+          if payload(first) != payload(second):
+              raise SystemExit("sdist payload differs between clean builds")
+          PY
+          mkdir dist
+          cp build-first/* dist/
           python -m twine check dist/*
           python - <<'PY'
           import pathlib, zipfile

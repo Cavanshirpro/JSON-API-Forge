@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import ipaddress
 import json
 import uuid
 from collections.abc import Mapping
 from typing import Any
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 
 import httpx
 
@@ -16,22 +17,30 @@ _JSON_ACCEPT = "application/json"
 
 def _base_url(value: str, *, allow_insecure_http: bool) -> str:
     parsed = urlsplit(value)
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.username or parsed.password:
+    host = parsed.hostname or ""
+    try:
+        loopback = host.lower() == "localhost" or ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        loopback = host.lower() == "localhost"
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.username or parsed.password or "\\" in value or "\0" in value:
         raise ValueError("base_url must be an absolute HTTP(S) URL without embedded credentials")
-    if parsed.scheme == "http" and not allow_insecure_http:
-        raise ValueError("plain HTTP requires allow_insecure_http=True")
+    if parsed.scheme == "http" and not (allow_insecure_http and loopback):
+        raise ValueError("plain HTTP requires allow_insecure_http=True and a loopback host")
     if parsed.query or parsed.fragment:
         raise ValueError("base_url must not contain a query or fragment")
+    decoded_parts = unquote(parsed.path).split("/")
+    if any(part in {".", ".."} for part in decoded_parts):
+        raise ValueError("base_url must not contain traversal segments")
     return value.rstrip("/") + "/"
 
 
 def _relative_path(value: str) -> str:
     parsed = urlsplit(value)
-    if parsed.scheme or parsed.netloc or value.startswith("//") or "\\" in value:
+    if parsed.scheme or parsed.netloc or value.startswith("//") or "\\" in value or "\0" in value:
         raise ValueError("request path must be relative to the configured Forge server")
     if parsed.fragment:
         raise ValueError("request path must not contain a fragment")
-    parts = [part for part in parsed.path.split("/") if part]
+    parts = [part for part in unquote(parsed.path).split("/") if part]
     if any(part in {".", ".."} for part in parts):
         raise ValueError("request path must not contain traversal segments")
     normalized = "/".join(parts)
@@ -39,7 +48,7 @@ def _relative_path(value: str) -> str:
 
 
 def _segment(value: str) -> str:
-    if not value or value in {".", ".."} or any(ch in value for ch in "\r\n\0"):
+    if not value or value in {".", ".."} or any(ch in value for ch in "/\\\r\n\0"):
         raise ValueError("path segment is empty or unsafe")
     return quote(value, safe="-._~")
 
@@ -65,8 +74,8 @@ def _headers(
             raise ValueError("idempotency_key is too long or contains control characters")
         values["Idempotency-Key"] = idempotency_key
     for name, value in (extra or {}).items():
-        if "\r" in name or "\n" in name or "\r" in value or "\n" in value:
-            raise ValueError("header names and values cannot contain line breaks")
+        if any(ch in name or ch in value for ch in "\r\n\0"):
+            raise ValueError("header names and values cannot contain control line breaks or NUL")
         values[name] = value
     return values
 
@@ -77,6 +86,13 @@ def _decode_response(response: httpx.Response, content: bytes, *, expect_json: b
         decoded = json.loads(content) if content else None
     except (UnicodeDecodeError, json.JSONDecodeError):
         decoded = None
+    if response.is_redirect:
+        raise ForgeHTTPError(
+            response.status_code,
+            "Redirects are disabled to keep credentials on the configured origin",
+            response.headers.get("X-Request-ID"),
+            response.headers.get("Retry-After"),
+        )
     if response.is_error:
         if isinstance(decoded, dict) and "detail" in decoded:
             detail = decoded["detail"]
@@ -110,10 +126,14 @@ def _bounded_content(response: httpx.Response, max_response_bytes: int) -> bytes
                 raise ForgeResponseTooLarge(f"Response exceeds max_response_bytes={max_response_bytes}")
         except ValueError:
             pass
-    content = response.read()
-    if len(content) > max_response_bytes:
-        raise ForgeResponseTooLarge(f"Response exceeds max_response_bytes={max_response_bytes}")
-    return content
+    chunks: list[bytes] = []
+    total = 0
+    for chunk in response.iter_bytes():
+        total += len(chunk)
+        if total > max_response_bytes:
+            raise ForgeResponseTooLarge(f"Response exceeds max_response_bytes={max_response_bytes}")
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 async def _bounded_content_async(response: httpx.Response, max_response_bytes: int) -> bytes:
@@ -147,8 +167,12 @@ class ForgeClient:
         allow_insecure_http: bool = False,
         transport: httpx.BaseTransport | None = None,
     ):
+        if api_key is not None and (not api_key or len(api_key) > 4096 or any(ch in api_key for ch in "\r\n\0")):
+            raise ValueError("api_key must be non-empty, at most 4096 characters, and contain no control line breaks or NUL")
+        if int(max_response_bytes) < 1024:
+            raise ValueError("max_response_bytes must be at least 1024")
         self.api_key = api_key
-        self.max_response_bytes = max(1024, int(max_response_bytes))
+        self.max_response_bytes = int(max_response_bytes)
         self._client = httpx.Client(
             base_url=_base_url(base_url, allow_insecure_http=allow_insecure_http),
             timeout=timeout,
@@ -245,8 +269,12 @@ class AsyncForgeClient:
         allow_insecure_http: bool = False,
         transport: httpx.AsyncBaseTransport | None = None,
     ):
+        if api_key is not None and (not api_key or len(api_key) > 4096 or any(ch in api_key for ch in "\r\n\0")):
+            raise ValueError("api_key must be non-empty, at most 4096 characters, and contain no control line breaks or NUL")
+        if int(max_response_bytes) < 1024:
+            raise ValueError("max_response_bytes must be at least 1024")
         self.api_key = api_key
-        self.max_response_bytes = max(1024, int(max_response_bytes))
+        self.max_response_bytes = int(max_response_bytes)
         self._client = httpx.AsyncClient(
             base_url=_base_url(base_url, allow_insecure_http=allow_insecure_http),
             timeout=timeout,

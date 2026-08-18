@@ -25,11 +25,11 @@ async with AsyncForgeClient("https://forge.example.com", api_key="...") as forge
     print(result.data, result.request_id, result.idempotent_replay)
 ```
 
-The sync and async clients support health/metadata, CRUD and operations plus the general `request` method. Nested resource paths such as `gaming/leaderboard` are supported. Item IDs and project/path segments are percent encoded.
+The sync and async clients support health/metadata, CRUD and operations plus the general `request` method. Nested resource paths such as `gaming/leaderboard` are supported. URL-safe item IDs and project/path segments are percent encoded; slash, backslash, traversal and control characters are rejected as ambiguous routing input.
 
 ## Security defaults
 
-- HTTPS is required unless `allow_insecure_http=True` is explicit.
+- HTTPS is required. `allow_insecure_http=True` permits HTTP only for a loopback server.
 - Embedded URL credentials, cross-host request URLs, fragments and traversal segments are rejected.
 - Redirects and ambient `HTTP_PROXY`/`HTTPS_PROXY` inheritance are disabled.
 - Response bodies are limited to 8 MiB by default; customize `max_response_bytes` deliberately.
@@ -49,4 +49,4 @@ python -m build
 python -m twine check dist/*
 ```
 
-The branch workflow validates synchronized versions, tests every supported Python on Linux plus representative Windows/macOS matrices, installs the wheel outside the checkout, verifies `py.typed`, creates SHA-256 checksums and uploads one release bundle. It never publishes to PyPI or creates a GitHub release.
+The branch workflow validates synchronized/tag versions, tests Python 3.11–3.14 across Linux x64/ARM64, Windows 2022/2025 and macOS Intel/ARM64, runs branch-aware critical coverage gates, compares two clean wheel builds byte-for-byte, compares two sdist payloads, installs the wheel outside the checkout, verifies `py.typed`, creates SHA-256 checksums and uploads one release bundle. Checkout credentials are not persisted. It never publishes to PyPI or creates a GitHub release.

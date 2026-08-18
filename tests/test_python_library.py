@@ -14,6 +14,14 @@ def test_public_facade_and_secure_url_validation():
         ForgeClient("http://forge.test")
     with pytest.raises(ValueError, match="credentials"):
         ForgeClient("https://user:secret@forge.test")
+    with pytest.raises(ValueError, match="loopback"):
+        ForgeClient("http://forge.test", allow_insecure_http=True)
+    with ForgeClient("http://127.0.0.1:8000", allow_insecure_http=True):
+        pass
+    with pytest.raises(ValueError, match="traversal"):
+        ForgeClient("https://forge.test/base/../admin")
+    with pytest.raises(ValueError, match="api_key"):
+        ForgeClient("https://forge.test", api_key="bad\r\nkey")
 
 
 def test_sync_client_routes_headers_errors_and_bounds():
@@ -25,6 +33,10 @@ def test_sync_client_routes_headers_errors_and_bounds():
             return httpx.Response(403, json={"detail": "no"}, headers={"X-Request-ID": "server-request"})
         if request.url.path.endswith("/large"):
             return httpx.Response(200, content=b"x" * 2048)
+        if request.url.path.endswith("/chunked"):
+            return httpx.Response(200, stream=ChunkedResponse())
+        if request.url.path.endswith("/redirect"):
+            return httpx.Response(302, headers={"Location": "https://attacker.test/collect"})
         return httpx.Response(
             200,
             json={"path": request.url.path},
@@ -50,10 +62,25 @@ def test_sync_client_routes_headers_errors_and_bounds():
         assert denied.value.status_code == 403 and denied.value.request_id == "server-request"
         with pytest.raises(ForgeResponseTooLarge):
             client.request("GET", "large")
+        with pytest.raises(ForgeResponseTooLarge):
+            client.request("GET", "chunked")
+        with pytest.raises(ForgeHTTPError) as redirect:
+            client.request("GET", "redirect")
+        assert redirect.value.status_code == 302
         with pytest.raises(ValueError):
             client.request("GET", "https://attacker.test/")
         with pytest.raises(ValueError):
             client.request("GET", "../secret")
+        with pytest.raises(ValueError):
+            client.request("GET", "%2e%2e/secret")
+        with pytest.raises(ValueError):
+            client.get_item("p", "notes", "folder/item")
+
+
+class ChunkedResponse(httpx.SyncByteStream):
+    def __iter__(self):
+        yield b"x" * 700
+        yield b"y" * 700
 
 
 def test_async_client_and_transport_error():

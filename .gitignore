@@ -33,6 +33,8 @@ htmlcov/
 
 # Build / packaging
 build/
+build-first/
+build-second/
 dist/
 *.egg-info/
 

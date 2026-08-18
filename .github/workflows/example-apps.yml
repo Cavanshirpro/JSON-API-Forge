@@ -73,13 +73,13 @@ jobs:
           cp EXAMPLE_APPS.md bundle/
           cp scripts/install-example.sh scripts/install-example.ps1 bundle/scripts/
           (cd bundle && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
-          (cd bundle && zip -X -r ../JSON-API-Forge-exampleApps-v0.4.2.zip .)
-          sha256sum JSON-API-Forge-exampleApps-v0.4.2.zip > JSON-API-Forge-exampleApps-v0.4.2.zip.sha256
+          (cd bundle && zip -X -r ../JSON-API-Forge-exampleApps-v0.5.0.zip .)
+          sha256sum JSON-API-Forge-exampleApps-v0.5.0.zip > JSON-API-Forge-exampleApps-v0.5.0.zip.sha256
       - uses: actions/upload-artifact@v7
         with:
-          name: JSON-API-Forge-exampleApps-v0.4.2
+          name: JSON-API-Forge-exampleApps-v0.5.0
           path: |
-            JSON-API-Forge-exampleApps-v0.4.2.zip
-            JSON-API-Forge-exampleApps-v0.4.2.zip.sha256
+            JSON-API-Forge-exampleApps-v0.5.0.zip
+            JSON-API-Forge-exampleApps-v0.5.0.zip.sha256
           if-no-files-found: error
           retention-days: 30

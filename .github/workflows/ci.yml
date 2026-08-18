@@ -156,8 +156,8 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "22"
-      - name: Install client dependencies
-        run: npm install --prefix clients/typescript --no-audit --no-fund
+      - name: Install locked client dependencies without lifecycle scripts
+        run: npm ci --prefix clients/typescript --ignore-scripts --no-audit --no-fund
       - name: Type-check client
         run: npm run --prefix clients/typescript typecheck
       - name: Test client security boundaries

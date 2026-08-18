@@ -1,6 +1,10 @@
 #include "ApiClient.hpp"
 #include "DocumentCodec.hpp"
+#include "GraphModel.hpp"
 #include "PluginManager.hpp"
+#include "PluginCatalogClient.hpp"
+#include "PythonSdkPanel.hpp"
+#include "TemplateManager.hpp"
 
 #include <QDir>
 #include <QFile>
@@ -19,6 +23,11 @@ private slots:
     void serverUrlPolicy();
     void tokenPolicy();
     void pluginManifestPathPolicy();
+    void graphModelPolicyAndCompiler();
+    void graphCycleRollback();
+    void pythonSdkSnippetPolicy();
+    void forgePluginCatalogPolicy();
+    void embeddedProjectTemplates();
 };
 
 void EditorCoreTests::jsonObjectsOnly()
@@ -41,6 +50,9 @@ void EditorCoreTests::documentPathPolicy()
     QVERIFY(!DocumentCodec::isSafeDocumentPath(QStringLiteral("../.env"), true));
     QVERIFY(!DocumentCodec::isSafeDocumentPath(QStringLiteral("config/nested/value.json"), true));
     QVERIFY(!DocumentCodec::isSafeDocumentPath(QStringLiteral("config\\value.json"), true));
+    QVERIFY(DocumentCodec::isSafeDocumentPath(QStringLiteral("graphs/order-flow.forgegraph.json"), true));
+    QVERIFY(!DocumentCodec::isSafeDocumentPath(QStringLiteral("graphs/OrderFlow.forgegraph.json"), true));
+    QVERIFY(!DocumentCodec::isSafeDocumentPath(QStringLiteral("graphs/nested/order.forgegraph.json"), true));
 }
 
 void EditorCoreTests::atomicSaveAndDigest()
@@ -103,6 +115,7 @@ void EditorCoreTests::pluginManifestPathPolicy()
         {QStringLiteral("version"), QStringLiteral("1.0.0")},
         {QStringLiteral("apiVersion"), ForgeEditor::PluginApiVersion},
         {QStringLiteral("library"), QStringLiteral("../escape.so")},
+        {QStringLiteral("sha256"), QString(64, u'0')},
     };
     QVERIFY(manifest.write(QJsonDocument(definition).toJson(QJsonDocument::Compact)) > 0);
     manifest.close();
@@ -111,6 +124,118 @@ void EditorCoreTests::pluginManifestPathPolicy()
     const auto descriptors = manager.discover();
     QCOMPARE(descriptors.size(), 1);
     QVERIFY(descriptors.first().error.contains(QStringLiteral("inside")));
+}
+
+void EditorCoreTests::graphModelPolicyAndCompiler()
+{
+    GraphModel graph;
+    const auto request = graph.addNode(QStringLiteral("request.input"), QStringLiteral("Request"), QPointF(0, 0),
+                                       QJsonObject{{QStringLiteral("method"), QStringLiteral("POST")}});
+    const auto policy = graph.addNode(QStringLiteral("auth.policy"), QStringLiteral("Policy"), QPointF(280, 0),
+                                      QJsonObject{{QStringLiteral("permission"), QStringLiteral("orders.create")}});
+    const auto query = graph.addNode(QStringLiteral("data.query"), QStringLiteral("Query"), QPointF(560, 0),
+                                     QJsonObject{{QStringLiteral("sql"), QStringLiteral("SELECT :id AS id")},
+                                                 {QStringLiteral("mode"), QStringLiteral("fetch_one")},
+                                                 {QStringLiteral("params"), QJsonObject{{QStringLiteral("id"), QStringLiteral("$body.id")}}}});
+    const auto operation = graph.addNode(QStringLiteral("operation.call"), QStringLiteral("Operation"), QPointF(840, 0),
+                                         QJsonObject{{QStringLiteral("name"), QStringLiteral("orders.lookup")},
+                                                     {QStringLiteral("method"), QStringLiteral("POST")}});
+    QVERIFY(!request.isEmpty());
+    QVERIFY(!policy.isEmpty());
+    QVERIFY(!query.isEmpty());
+    QVERIFY(!operation.isEmpty());
+    QString error;
+    QVERIFY2(graph.connectNodes(request, QStringLiteral("exec"), policy, QStringLiteral("exec"), &error), qPrintable(error));
+    QVERIFY2(graph.connectNodes(policy, QStringLiteral("exec"), query, QStringLiteral("exec"), &error), qPrintable(error));
+    QVERIFY2(graph.connectNodes(query, QStringLiteral("exec"), operation, QStringLiteral("exec"), &error), qPrintable(error));
+    QVERIFY2(graph.validate(&error), qPrintable(error));
+    const auto compiled = graph.compiledFragment(&error);
+    QVERIFY2(!compiled.isEmpty(), qPrintable(error));
+    const auto compiledOperation = compiled.value(QStringLiteral("operations")).toArray().first().toObject();
+    QCOMPARE(compiledOperation.value(QStringLiteral("name")).toString(), QStringLiteral("orders.lookup"));
+    QCOMPARE(compiledOperation.value(QStringLiteral("permission")).toString(), QStringLiteral("orders.create"));
+    QCOMPARE(compiledOperation.value(QStringLiteral("statements")).toArray().size(), 1);
+}
+
+void EditorCoreTests::graphCycleRollback()
+{
+    GraphModel graph;
+    const auto first = graph.addNode(QStringLiteral("logic.branch"), QStringLiteral("First"), QPointF(0, 0));
+    const auto second = graph.addNode(QStringLiteral("transform.map"), QStringLiteral("Second"), QPointF(280, 0));
+    QString error;
+    QVERIFY(graph.connectNodes(first, QStringLiteral("exec"), second, QStringLiteral("exec"), &error));
+    QVERIFY(!graph.connectNodes(second, QStringLiteral("exec"), first, QStringLiteral("exec"), &error));
+    QVERIFY(error.contains(QStringLiteral("acyclic")));
+    QCOMPARE(graph.document().value(QStringLiteral("edges")).toArray().size(), 1);
+}
+
+void EditorCoreTests::pythonSdkSnippetPolicy()
+{
+    const PythonSdkSettings sync{QStringLiteral("sync"), QStringLiteral("https://forge.example.com"), QString(),
+                                 QStringLiteral("enterprise"), QStringLiteral("records"), QStringLiteral("records.summary"),
+                                 QStringLiteral("FORGE_API_KEY")};
+    QString error;
+    const auto code = PythonSdkPanel::generatedSnippet(sync, &error);
+    QVERIFY2(!code.isEmpty(), qPrintable(error));
+    QVERIFY(code.contains(QStringLiteral("RetryPolicy")));
+    QVERIFY(code.contains(QStringLiteral("iter_items")));
+    auto unsafe = sync;
+    unsafe.endpoint = QStringLiteral("https://user:secret@forge.example.com");
+    QVERIFY(PythonSdkPanel::generatedSnippet(unsafe, &error).isEmpty());
+    auto cluster = sync;
+    cluster.mode = QStringLiteral("cluster");
+    cluster.clusterEndpoints = QStringLiteral("https://eu.example.com,https://us.example.com");
+    const auto clusterCode = PythonSdkPanel::generatedSnippet(cluster, &error);
+    QVERIFY2(clusterCode.contains(QStringLiteral("RoutingStrategy.RENDEZVOUS")), qPrintable(error));
+}
+
+void EditorCoreTests::forgePluginCatalogPolicy()
+{
+    QUrl endpoint;
+    QString error;
+    QVERIFY(PluginCatalogClient::catalogEndpoint(QUrl(QStringLiteral("https://forge.example.com")),
+                                                  QStringLiteral("editor-plugin-registry"), QStringLiteral("editor/plugins"),
+                                                  false, &endpoint, &error));
+    QCOMPARE(endpoint.path(), QStringLiteral("/api/editor-plugin-registry/v1/editor/plugins"));
+    QVERIFY(!PluginCatalogClient::catalogEndpoint(QUrl(QStringLiteral("https://forge.example.com")),
+                                                   QStringLiteral("../admin"), QStringLiteral("editor/plugins"), false,
+                                                   &endpoint, &error));
+    const QJsonArray valid{QJsonObject{{QStringLiteral("plugin_id"), QStringLiteral("vendor.analytics")},
+                                       {QStringLiteral("name"), QStringLiteral("Analytics")},
+                                       {QStringLiteral("version"), QStringLiteral("1.2.0")},
+                                       {QStringLiteral("sha256"), QString(64, u'a')},
+                                       {QStringLiteral("download_url"), QStringLiteral("https://packages.example.com/analytics.zip")},
+                                       {QStringLiteral("permissions"), QJsonArray{QStringLiteral("graph.nodes.register")}}}};
+    QVERIFY2(PluginCatalogClient::validateCatalog(valid, &error), qPrintable(error));
+    auto invalid = valid;
+    auto item = invalid.first().toObject();
+    item.insert(QStringLiteral("download_url"), QStringLiteral("http://packages.example.com/analytics.zip"));
+    invalid.replace(0, item);
+    QVERIFY(!PluginCatalogClient::validateCatalog(invalid, &error));
+}
+
+void EditorCoreTests::embeddedProjectTemplates()
+{
+    QString error;
+    const auto definitions = TemplateManager::templates(&error);
+    QVERIFY2(definitions.size() >= 8, qPrintable(error));
+    QTemporaryDir workspace;
+    QVERIFY(workspace.isValid());
+    QVERIFY2(TemplateManager::createProject(definitions.first(), workspace.path(), QStringLiteral("TemplateProject"),
+                                             QStringLiteral("template-project"), &error),
+             qPrintable(error));
+    const QDir project(workspace.filePath(QStringLiteral("TemplateProject")));
+    QVERIFY(QFileInfo::exists(project.filePath(QStringLiteral("app.json"))));
+    QVERIFY(QFileInfo::exists(project.filePath(QStringLiteral("config/40-resources.json"))));
+    QFile graphFile(project.filePath(QStringLiteral("graphs/domain-flow.forgegraph.json")));
+    QVERIFY(graphFile.open(QIODevice::ReadOnly));
+    QJsonObject graphDocument;
+    QVERIFY(DocumentCodec::parseObject(graphFile.readAll(), &graphDocument, &error));
+    GraphModel graph;
+    QVERIFY2(graph.setDocument(graphDocument, &error), qPrintable(error));
+    QVERIFY(!graph.compiledFragment(&error).isEmpty());
+    QVERIFY(!TemplateManager::createProject(definitions.first(), workspace.path(), QStringLiteral("TemplateProject"),
+                                             QStringLiteral("template-project"), &error));
 }
 
 QTEST_MAIN(EditorCoreTests)

@@ -57,6 +57,10 @@ bool DocumentCodec::isSafeDocumentPath(const QString &path, bool allowHooks)
     if (parts.at(0) == QStringLiteral("config")) {
         return parts.at(1).endsWith(QStringLiteral(".json"), Qt::CaseSensitive) && !parts.at(1).startsWith(u'.');
     }
+    if (parts.at(0) == QStringLiteral("graphs")) {
+        static const QRegularExpression GraphNamePattern(QStringLiteral(R"(^[a-z0-9](?:[a-z0-9._-]{0,94}[a-z0-9])?\.forgegraph\.json$)"));
+        return GraphNamePattern.match(parts.at(1)).hasMatch();
+    }
     return allowHooks && parts.at(0) == QStringLiteral("hooks") && parts.at(1).endsWith(QStringLiteral(".py"), Qt::CaseSensitive)
         && !parts.at(1).startsWith(u'.');
 }

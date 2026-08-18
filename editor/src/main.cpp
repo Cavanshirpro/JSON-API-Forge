@@ -12,7 +12,7 @@ int main(int argc, char *argv[])
 {
     QApplication application(argc, argv);
     application.setApplicationDisplayName(QStringLiteral("JSON API Forge Editor"));
-    application.setApplicationVersion(QStringLiteral("0.4.2"));
+    application.setApplicationVersion(QStringLiteral("0.5.0"));
     application.setWindowIcon(QIcon(QStringLiteral(":/branding/logo.png")));
     application.setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
 
@@ -25,9 +25,15 @@ int main(int argc, char *argv[])
         QStringLiteral("Render the initial window to <path> and exit (visual regression/packaging smoke test)."),
         QStringLiteral("path"));
     parser.addOption(screenshotOption);
+    const QCommandLineOption graphPreviewOption(QStringList{QStringLiteral("graph-preview")},
+                                                 QStringLiteral("Open the built-in operation graph preview."));
+    parser.addOption(graphPreviewOption);
     parser.process(application);
 
     MainWindow window;
+    if (parser.isSet(graphPreviewOption)) {
+        window.showGraphPreview();
+    }
     const auto screenshotPath = parser.value(screenshotOption);
     const bool renderingPreview = !screenshotPath.isEmpty();
     window.setWindowOpacity(renderingPreview ? 1.0 : 0.0);

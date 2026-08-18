@@ -8,12 +8,13 @@
 
 namespace ForgeEditor {
 
-inline constexpr int PluginApiVersion = 1;
+inline constexpr int PluginApiVersion = 2;
 
 class EditorHost {
 public:
     virtual ~EditorHost() = default;
     virtual void addPaletteComponent(const QString &label, const QString &collection, const QJsonObject &documentTemplate) = 0;
+    virtual void addGraphNodeType(const QString &label, const QString &type, const QJsonObject &defaultProperties) = 0;
     virtual void addToolAction(QAction *action) = 0;
     virtual void addDockWidget(Qt::DockWidgetArea area, QDockWidget *dock) = 0;
     virtual void showStatusMessage(const QString &message, int timeoutMs = 4000) = 0;
@@ -31,5 +32,5 @@ public:
 
 } // namespace ForgeEditor
 
-#define ForgeEditorPluginInterface_iid "dev.jsonapiforge.EditorPlugin/1.0"
+#define ForgeEditorPluginInterface_iid "dev.jsonapiforge.EditorPlugin/2.0"
 Q_DECLARE_INTERFACE(ForgeEditor::IEditorPlugin, ForgeEditorPluginInterface_iid)

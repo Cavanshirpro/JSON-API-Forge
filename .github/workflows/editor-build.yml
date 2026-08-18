@@ -17,7 +17,7 @@ concurrency:
 jobs:
   preflight:
     name: Source and CMake preflight
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
@@ -32,14 +32,20 @@ jobs:
           import pathlib, re
           root = pathlib.Path.cwd()
           cmake = (root / "editor/CMakeLists.txt").read_text()
-          if not re.search(r"project\(JSONAPIForgeEditor VERSION 0\.4\.2", cmake):
+          if not re.search(r"project\(JSONAPIForgeEditor VERSION 0\.5\.0", cmake):
               raise SystemExit("Editor CMake version mismatch")
           required = [
               "editor/src/MainWindow.cpp",
               "editor/src/ApiClient.cpp",
               "editor/src/VisualDesigner.cpp",
+              "editor/src/GraphModel.cpp",
+              "editor/src/NodeGraphEditor.cpp",
+              "editor/src/PluginCatalogClient.cpp",
+              "editor/src/PythonSdkPanel.cpp",
+              "editor/src/TemplateManager.cpp",
               "editor/include/forgeeditor/IEditorPlugin.hpp",
               "editor/resources/styles/dark.qss",
+              "editor/resources/templates/catalog.json",
               "editor/resources/logo.png",
               "editor/resources/forge-editor.ico",
               "editor/resources/forge-editor.icns",
@@ -50,12 +56,16 @@ jobs:
               raise SystemExit(f"missing editor files: {missing}")
           if (root / "editor/resources/logo.png").stat().st_size < 100_000:
               raise SystemExit("canonical editor logo appears truncated")
+          import json
+          catalog = json.loads((root / "editor/resources/templates/catalog.json").read_text())
+          if len(catalog.get("templates", [])) != 8:
+              raise SystemExit("Editor must ship exactly eight reviewed starter templates")
           PY
           python scripts/check_manifest.py
           git diff --check
 
   build:
-    name: ${{ matrix.label }} / Qt 6.8
+    name: ${{ matrix.label }}
     needs: preflight
     runs-on: ${{ matrix.os }}
     timeout-minutes: 35
@@ -63,14 +73,32 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {os: ubuntu-24.04, label: Linux-x64, artifact: linux-x64}
-          - {os: windows-2025, label: Windows-x64, artifact: windows-x64}
-          - {os: macos-15, label: macOS-arm64, artifact: macos-arm64}
+          - {os: ubuntu-24.04, label: Linux x64 / Qt 6.4+, artifact: linux-x64}
+          - {os: ubuntu-24.04-arm, label: Linux ARM64 / Qt 6.4+, artifact: linux-arm64}
+          - {os: windows-2025, label: Windows x64 / Qt 6.8, artifact: windows-x64, qt_arch: win64_msvc2022_64}
+          - {os: windows-11-arm, label: Windows ARM64 / Qt 6.8, artifact: windows-arm64, qt_arch: win64_msvc2022_arm64}
+          - {os: macos-15-intel, label: macOS x64 / Qt 6.8, artifact: macos-x64}
+          - {os: macos-15, label: macOS ARM64 / Qt 6.8, artifact: macos-arm64}
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: jurplel/install-qt-action@v4
+      - name: Install native Qt on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y ninja-build qt6-base-dev qt6-base-dev-tools
+      - name: Install Qt on Windows
+        if: runner.os == 'Windows'
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.8.3"
+          arch: ${{ matrix.qt_arch }}
+          cache: true
+      - name: Install Qt on macOS
+        if: runner.os == 'macOS'
+        uses: jurplel/install-qt-action@v4
         with:
           version: "6.8.3"
           cache: true
@@ -88,8 +116,11 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          QT_QPA_PLATFORM=offscreen build/editor/JSON-API-Forge-Editor --screenshot editor-preview.png
-          test -s editor-preview.png
+          mkdir -p artifacts
+          QT_QPA_PLATFORM=offscreen build/editor/JSON-API-Forge-Editor --screenshot artifacts/editor-welcome-${{ matrix.artifact }}.png
+          QT_QPA_PLATFORM=offscreen build/editor/JSON-API-Forge-Editor --graph-preview --screenshot artifacts/editor-graph-${{ matrix.artifact }}.png
+          test -s artifacts/editor-welcome-${{ matrix.artifact }}.png
+          test -s artifacts/editor-graph-${{ matrix.artifact }}.png
       - name: Stage install tree
         run: cmake --install build --config Release --prefix stage
       - name: Package Linux install tree
@@ -98,8 +129,8 @@ jobs:
         run: |
           mkdir -p artifacts
           cp EDITOR.md LICENSE stage/
-          tar -C stage -czf artifacts/JSON-API-Forge-Editor-v0.4.2-linux-x64.tar.gz .
-          (cd artifacts && sha256sum JSON-API-Forge-Editor-v0.4.2-linux-x64.tar.gz > JSON-API-Forge-Editor-v0.4.2-linux-x64.tar.gz.sha256)
+          tar -C stage -czf artifacts/JSON-API-Forge-Editor-v0.5.0-${{ matrix.artifact }}.tar.gz .
+          (cd artifacts && sha256sum JSON-API-Forge-Editor-v0.5.0-${{ matrix.artifact }}.tar.gz > JSON-API-Forge-Editor-v0.5.0-${{ matrix.artifact }}.tar.gz.sha256)
       - name: Deploy and package Windows application
         if: runner.os == 'Windows'
         shell: pwsh
@@ -109,8 +140,9 @@ jobs:
           if (-not $exe) { throw "Installed editor executable not found" }
           windeployqt --release --no-translations --compiler-runtime $exe.FullName
           Copy-Item EDITOR.md,LICENSE -Destination $exe.Directory.FullName
-          Compress-Archive -Path "$($exe.Directory.FullName)\*" -DestinationPath artifacts/JSON-API-Forge-Editor-v0.4.2-windows-x64.zip
-          (Get-FileHash artifacts/JSON-API-Forge-Editor-v0.4.2-windows-x64.zip -Algorithm SHA256).Hash.ToLower() + "  JSON-API-Forge-Editor-v0.4.2-windows-x64.zip" | Set-Content artifacts/JSON-API-Forge-Editor-v0.4.2-windows-x64.zip.sha256
+          $archive = "JSON-API-Forge-Editor-v0.5.0-${{ matrix.artifact }}.zip"
+          Compress-Archive -Path "$($exe.Directory.FullName)\*" -DestinationPath "artifacts/$archive"
+          (Get-FileHash "artifacts/$archive" -Algorithm SHA256).Hash.ToLower() + "  $archive" | Set-Content "artifacts/$archive.sha256"
       - name: Deploy and package macOS application
         if: runner.os == 'macOS'
         shell: bash
@@ -120,11 +152,12 @@ jobs:
           test -n "$app_path"
           macdeployqt "$app_path" -always-overwrite
           cp EDITOR.md LICENSE stage/
-          ditto -c -k --sequesterRsrc --keepParent stage artifacts/JSON-API-Forge-Editor-v0.4.2-macos-arm64.zip
-          (cd artifacts && shasum -a 256 JSON-API-Forge-Editor-v0.4.2-macos-arm64.zip > JSON-API-Forge-Editor-v0.4.2-macos-arm64.zip.sha256)
+          archive=JSON-API-Forge-Editor-v0.5.0-${{ matrix.artifact }}.zip
+          ditto -c -k --sequesterRsrc --keepParent stage "artifacts/$archive"
+          (cd artifacts && shasum -a 256 "$archive" > "$archive.sha256")
       - uses: actions/upload-artifact@v7
         with:
-          name: JSON-API-Forge-Editor-v0.4.2-${{ matrix.artifact }}
+          name: JSON-API-Forge-Editor-v0.5.0-${{ matrix.artifact }}
           path: artifacts/*
           if-no-files-found: error
           retention-days: 30
@@ -132,7 +165,7 @@ jobs:
   bundle:
     name: Combined editor artifact bundle
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
@@ -140,7 +173,7 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@v8
         with:
-          pattern: JSON-API-Forge-Editor-v0.4.2-*
+          pattern: JSON-API-Forge-Editor-v0.5.0-*
           path: downloads
       - name: Verify platform checksums and assemble one bundle
         run: |
@@ -150,14 +183,14 @@ jobs:
           cp EDITOR.md downloads/
           (cd downloads && find . -type f ! -name '*.sha256' ! -name 'SHA256SUMS' -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
           cd downloads
-          zip -r ../JSON-API-Forge-Editor-v0.4.2-all-platforms.zip .
+          zip -r ../JSON-API-Forge-Editor-v0.5.0-all-platforms.zip .
           cd ..
-          sha256sum JSON-API-Forge-Editor-v0.4.2-all-platforms.zip > JSON-API-Forge-Editor-v0.4.2-all-platforms.zip.sha256
+          sha256sum JSON-API-Forge-Editor-v0.5.0-all-platforms.zip > JSON-API-Forge-Editor-v0.5.0-all-platforms.zip.sha256
       - uses: actions/upload-artifact@v7
         with:
-          name: JSON-API-Forge-Editor-v0.4.2-all-platforms
+          name: JSON-API-Forge-Editor-v0.5.0-all-platforms
           path: |
-            JSON-API-Forge-Editor-v0.4.2-all-platforms.zip
-            JSON-API-Forge-Editor-v0.4.2-all-platforms.zip.sha256
+            JSON-API-Forge-Editor-v0.5.0-all-platforms.zip
+            JSON-API-Forge-Editor-v0.5.0-all-platforms.zip.sha256
           if-no-files-found: error
           retention-days: 30

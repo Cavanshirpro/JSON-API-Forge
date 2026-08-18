@@ -1,28 +1,76 @@
 # JSON API Forge Editor
 
-The editor is a C++20/Qt 6 Widgets application dedicated to JSON API Forge. It supports both local project trees and the v1 remote control plane implemented by the hardened server on this branch and `main`.
+JSON API Forge Editor is a C++20/Qt 6 desktop workspace for authoring and operating Forge projects. It combines direct JSON editing, typed visual forms and an Unreal-inspired operation graph without introducing a second runtime language: the graph compiles to ordinary Forge configuration and the server still applies its normal schema, semantic and policy checks.
 
-## Capabilities
+## Authoring modes
 
-- Code mode with line numbers, JSON syntax highlighting, current-line focus and indentation support.
-- Visual mode with draggable resources, RPC operations, data sources and realtime channels; tree selection exposes editable typed/JSON properties.
-- Local project discovery, atomic `QSaveFile` writes and JSON-object checks.
-- Remote capability discovery, project/document browsing, creation when allowed, merged server validation and SHA-256 optimistic concurrency.
-- Conflict-safe reload prompt on HTTP 409; invalid server-side edits never replace the live configuration.
-- Server-enforced read-only, create-project, Python-hook, project allowlist, TLS/IP and size policies reflected in the UI.
-- Native Qt plugin SDK with manifest/API/identity/path checks and explicit per-plugin approval.
-- Graphite/amber QSS theme, animated workspace transitions, animated sidebar and startup fade.
+- **Code** provides line numbers, JSON highlighting, current-line focus and direct access to every supported local or remote document.
+- **Visual** exposes resources, operations, databases and event channels as selectable, draggable components with typed and JSON property editing.
+- **Graph** provides a grid canvas with pan/zoom, marquee selection, draggable nodes, output-to-input Bézier wires, cycle/fan-in validation, automatic layout, fit-to-content and a live compiled-operation preview.
 
-The supplied project logo is embedded unchanged in the UI and converted into native Windows/macOS application icons. Linux installs include a desktop entry and hicolor application icon.
+The graph palette includes Request, Authorization, SQL Query, SQL Mutation, Branch, Transform, Forge Operation, Python SDK, Event and Response nodes. Native plugins can register additional node types through Plugin API v2. Graphs are stored as bounded, schema-versioned `graphs/*.forgegraph.json` documents and target one direct `config/*.json` fragment.
 
-## Prerequisites
+## Project templates
 
-- CMake 3.24 or newer
-- C++20 compiler (MSVC 2022, AppleClang 15+, GCC 12+ or Clang 15+)
-- Qt 6.6 or newer with Core, Gui, Widgets, Network and Test
-- Ninja is recommended for the included presets
+Use **File → New from template…** after opening a local workspace. Creation is staged in a temporary directory and atomically published only after every file succeeds. Each template includes a manifest, database/security/resource/operation/event fragments, an editable graph and its own runbook.
 
-## Build and test
+| Template | Focus |
+|---|---|
+| Secure Operations Hub | Hardened CRUD, permissions, cache, events and analytics |
+| SaaS Control Plane | Tenant subscription and lifecycle operations |
+| Event-Driven Commerce | Order workflow and idempotent processing foundation |
+| Analytics Read Model | Bounded aggregate/read-model API |
+| Forge Plugin Registry | Forge-backed Editor plugin catalog metadata |
+| Python Enterprise Gateway | Multi-region Python SDK integration foundation |
+| Media Operations | Media metadata and operational lifecycle |
+| Audited Ledger Workflow | Controlled transitions and audit-oriented records |
+
+## Local and remote workspaces
+
+Choose **File → Open local workspace…** and select a Forge repository root, its `app/` directory or one project directory. Local JSON/graph saves use `QSaveFile` atomic replacement. The Editor performs structural checks; `forge validate` remains the canonical merged-project and semantic validator.
+
+For remote administration, enable the control plane only on a private endpoint:
+
+```dotenv
+EDITOR_API_ENABLED=true
+EDITOR_TOKEN=<strong-independent-secret>
+EDITOR_REQUIRE_HTTPS=true
+EDITOR_ALLOWED_IPS=10.20.0.0/16
+EDITOR_TRUSTED_PROXY_CIDRS=10.0.0.0/8
+EDITOR_ALLOWED_PROJECTS=Billing,InternalPortal
+EDITOR_READ_ONLY=false
+EDITOR_ALLOW_CREATE_PROJECTS=false
+EDITOR_ALLOW_HOOKS=false
+EDITOR_ALLOW_GRAPHS=true
+```
+
+The desktop token stays in memory and is cleared on disconnect/destruction; only the non-secret last URL is saved. Redirects, certificate failures and ambient desktop proxies are rejected. Plain HTTP requires a visible local-development opt-in and is restricted to loopback addresses. Keep the endpoint behind a VPN/private administration host and firewall. Python hook editing remains a separate, high-risk policy.
+
+Remote graph support is deliberately metadata-only. The server checks document size, exact fields, node/edge identities, target path, unique input fan-in and acyclic execution. Compiled JSON must still pass normal Forge validation before deployment.
+
+## Python SDK integration
+
+Open **Integrations → Python SDK panel** to generate secret-safe snippets for:
+
+- synchronous and asynchronous clients;
+- bounded pagination and retry policy;
+- multi-region rendezvous routing, failover and circuit breaking;
+- YoungLion-native payloads;
+- DDM conversion adapters.
+
+The panel reads the API key from a named environment variable, invokes Python with fixed arguments rather than a shell, can verify the installed SDK and can run a bounded health check. Install the base SDK with `pip install json-api-forge`, or integration extras with `pip install "json-api-forge[younglion]"` and `pip install "json-api-forge[ddm]"`.
+
+## Plugins and Forge catalog
+
+Local native plugins can contribute palette components, graph node types, actions and dock widgets. A manifest must use API v2, declare a lowercase SHA-256 digest and list its requested permissions. The Editor constrains libraries to approved plugin directories, rejects symlinks and identity/API mismatches, verifies the binary digest before loading, and requires explicit per-ID enablement.
+
+**Plugins → Browse Forge plugin catalog…** reads release metadata from a normal JSON API Forge resource (`/api/<project>/v1/<resource>`). This makes Forge itself the catalog/control plane: the response is bounded and every record's ID, version, HTTPS package URL, digest and permissions are validated. The Editor does not silently download or execute catalog code; an operator reviews the record and copies the package URL before installing the verified native bundle. See `editor/plugins/README.md` for the contracts.
+
+Native plugins execute with the desktop user's privileges. Hash verification detects package changes but is not publisher identity; use signed releases and a trusted distribution channel.
+
+## Build locally
+
+Prerequisites are CMake 3.24+, a C++20 compiler, Qt 6.4+ with Core/Gui/Widgets/Network/Test, and preferably Ninja.
 
 ```bash
 cmake -S . -B build/editor -G Ninja \
@@ -32,41 +80,18 @@ cmake -S . -B build/editor -G Ninja \
 cmake --build build/editor --parallel
 ctest --test-dir build/editor --output-on-failure
 cmake --install build/editor --prefix build/stage
-QT_QPA_PLATFORM=offscreen build/editor/editor/JSON-API-Forge-Editor --screenshot build/editor-preview.png
+QT_QPA_PLATFORM=offscreen build/editor/editor/JSON-API-Forge-Editor \
+  --graph-preview --screenshot build/editor-graph-preview.png
 ```
 
-Or use `cmake --preset release`, `cmake --build --preset release` and `ctest --preset release`.
-
-## Local workflow
-
-Choose **File → Open local workspace** and select either a Forge repository root, its `app/` directory or one project directory. Local JSON saves are atomic. The editor performs syntax/object validation; run `forge validate` for the same full merged model/semantic validation used by the server.
-
-## Remote workflow
-
-Enable the server control plane only on an administration endpoint:
-
-```dotenv
-EDITOR_API_ENABLED=true
-EDITOR_TOKEN=<strong independent secret>
-EDITOR_REQUIRE_HTTPS=true
-EDITOR_ALLOWED_IPS=10.20.0.0/16
-EDITOR_TRUSTED_PROXY_CIDRS=10.0.0.0/8
-EDITOR_ALLOWED_PROJECTS=Billing,Internal Portal
-EDITOR_READ_ONLY=false
-EDITOR_ALLOW_CREATE_PROJECTS=false
-EDITOR_ALLOW_HOOKS=false
-```
-
-The desktop token is kept in memory and cleared on disconnect/destruction; only the non-secret last server URL is saved. Redirects and certificate errors are rejected. Ambient desktop/system proxies are disabled. Plain HTTP requires a visible local-development opt-in, is limited to `localhost`, `127.0.0.0/8` or `::1`, and may still be rejected by the server.
-
-Keep the endpoint behind a VPN/private administration host and firewall. Remote hook editing is remote code modification and therefore disabled separately.
-
-## Plugins
-
-Plugins implement `ForgeEditor::IEditorPlugin` and may contribute palette components, tool actions and dock widgets. The editor scans only the installation/user plugin directories, reads `*.forgeplugin.json`, constrains the library to that directory, rejects symlinks/incompatible API versions and verifies runtime identity. A discovered plugin is not executed until the user enables its ID in **Plugins → Manage plugins**.
-
-This is not a sandbox or code-signing system. A native plugin has the desktop user's privileges. Review and verify plugin source/binaries before approval. See `editor/plugins/README.md`.
+The supplied project logo is embedded unchanged in the UI and converted to native Windows/macOS icons. Linux installs include a desktop entry and hicolor icon.
 
 ## CI artifacts
 
-The `Editor build` workflow compiles/tests with warnings-as-errors on Linux, Windows and macOS. It runs `windeployqt` and `macdeployqt` for self-contained platform bundles, emits the Linux install tree, uploads each platform artifact, then creates a single checksum manifest bundle. It never creates a release or pushes generated binaries.
+The `Editor build` workflow builds and tests six native targets with warnings-as-errors:
+
+- Linux x64 and ARM64 (`ubuntu-24.04`, `ubuntu-24.04-arm`)
+- Windows x64 and ARM64 (`windows-2025`, `windows-11-arm`)
+- macOS x64 and ARM64 (`macos-15-intel`, `macos-15`)
+
+Linux jobs render both welcome and graph screenshots. Windows runs `windeployqt`; macOS runs `macdeployqt`; every platform receives an architecture-specific archive and SHA-256 file. A final job verifies those hashes and publishes one all-platform bundle. Workflows never create a release or push generated binaries.

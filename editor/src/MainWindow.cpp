@@ -4,13 +4,20 @@
 #include "ConnectionDialog.hpp"
 #include "DocumentCodec.hpp"
 #include "JsonHighlighter.hpp"
+#include "NodeGraphEditor.hpp"
+#include "PluginCatalogClient.hpp"
+#include "PythonSdkPanel.hpp"
+#include "TemplateManager.hpp"
 #include "VisualDesigner.hpp"
 
 #include <QAction>
 #include <QApplication>
+#include <QCheckBox>
+#include <QClipboard>
 #include <QCloseEvent>
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QDockWidget>
 #include <QDir>
 #include <QFile>
 #include <QFileDialog>
@@ -73,7 +80,7 @@ MainWindow::MainWindow(QWidget *parent)
 {
     QCoreApplication::setOrganizationName(QStringLiteral("Cavanshirpro"));
     QCoreApplication::setApplicationName(QStringLiteral("JSON API Forge Editor"));
-    QCoreApplication::setApplicationVersion(QStringLiteral("0.4.2"));
+    QCoreApplication::setApplicationVersion(QStringLiteral("0.5.0"));
     setWindowTitle(QStringLiteral("JSON API Forge Editor"));
     setWindowIcon(QIcon(QStringLiteral(":/branding/logo.png")));
     resize(1480, 900);
@@ -105,6 +112,11 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_visualDesigner, &VisualDesigner::documentChanged, this, [this] { setDirty(true); });
     connect(m_visualDesigner, &VisualDesigner::statusMessage, this,
             [this](const QString &message) { showStatusMessage(message); });
+    connect(m_graphEditor, &NodeGraphEditor::documentChanged, this, [this] { setDirty(true); });
+    connect(m_graphEditor, &NodeGraphEditor::statusMessage, this,
+            [this](const QString &message) { showStatusMessage(message, 6000); });
+    connect(m_pythonPanel, &PythonSdkPanel::statusMessage, this,
+            [this](const QString &message) { showStatusMessage(message, 6000); });
 }
 
 MainWindow::~MainWindow()
@@ -113,6 +125,16 @@ MainWindow::~MainWindow()
         m_pluginManager->unloadAll();
         delete m_pluginManager;
     }
+}
+
+void MainWindow::showGraphPreview()
+{
+    m_remoteMode = false;
+    m_currentProject = QStringLiteral("GraphPreview");
+    const auto target = QStringLiteral("config/50-preview-operation.json");
+    loadDocument(QStringLiteral("graphs/preview.forgegraph.json"),
+                 DocumentCodec::prettyJson(NodeGraphEditor::starterDocument(target)), QStringLiteral("new"));
+    setDirty(false);
 }
 
 void MainWindow::buildInterface()
@@ -196,10 +218,17 @@ void MainWindow::buildInterface()
     m_visualButton->setCheckable(true);
     m_visualButton->setEnabled(false);
     m_visualButton->setObjectName(QStringLiteral("modeButton"));
+    m_graphButton = new QToolButton(header);
+    m_graphButton->setText(QStringLiteral("Graph"));
+    m_graphButton->setCheckable(true);
+    m_graphButton->setEnabled(false);
+    m_graphButton->setObjectName(QStringLiteral("modeButton"));
     connect(m_codeButton, &QToolButton::clicked, this, &MainWindow::showCodeMode);
     connect(m_visualButton, &QToolButton::clicked, this, &MainWindow::showVisualMode);
+    connect(m_graphButton, &QToolButton::clicked, this, &MainWindow::showGraphMode);
     headerLayout->addWidget(m_codeButton);
     headerLayout->addWidget(m_visualButton);
+    headerLayout->addWidget(m_graphButton);
     contentLayout->addWidget(header);
 
     m_workspace = new QStackedWidget(content);
@@ -250,9 +279,11 @@ void MainWindow::buildInterface()
     new JsonHighlighter(m_codeEditor->document());
     m_codeEditor->setPlaceholderText(QStringLiteral("Open app.json or a configuration fragment to begin."));
     m_visualDesigner = new VisualDesigner(m_workspace);
+    m_graphEditor = new NodeGraphEditor(m_workspace);
     m_workspace->addWidget(m_welcomePage);
     m_workspace->addWidget(m_codeEditor);
     m_workspace->addWidget(m_visualDesigner);
+    m_workspace->addWidget(m_graphEditor);
     contentLayout->addWidget(m_workspace, 1);
     root->addWidget(m_sidebar);
     root->addWidget(content);
@@ -262,6 +293,14 @@ void MainWindow::buildInterface()
     m_pluginToolBar->setObjectName(QStringLiteral("pluginToolBar"));
     m_pluginToolBar->setMovable(false);
     m_pluginToolBar->hide();
+    m_pythonDock = new QDockWidget(QStringLiteral("Python SDK Integration"), this);
+    m_pythonDock->setObjectName(QStringLiteral("pythonSdkDock"));
+    m_pythonDock->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
+    m_pythonDock->setMinimumWidth(390);
+    m_pythonPanel = new PythonSdkPanel(m_pythonDock);
+    m_pythonDock->setWidget(m_pythonPanel);
+    addDockWidget(Qt::RightDockWidgetArea, m_pythonDock);
+    m_pythonDock->hide();
     statusBar()->setObjectName(QStringLiteral("statusBar"));
     statusBar()->showMessage(QStringLiteral("Ready"));
 
@@ -285,6 +324,10 @@ void MainWindow::buildActions()
     m_validateAction->setEnabled(false);
     m_createAction = fileMenu->addAction(QStringLiteral("Create project…"), this, &MainWindow::createProject);
     m_createAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+N")));
+    auto *templateAction = fileMenu->addAction(QStringLiteral("New from template…"), this, &MainWindow::createFromTemplate);
+    templateAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Alt+N")));
+    auto *graphAction = fileMenu->addAction(QStringLiteral("New operation graph…"), this, &MainWindow::createGraph);
+    graphAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+G")));
     fileMenu->addSeparator();
     fileMenu->addAction(QStringLiteral("Disconnect"), this, &MainWindow::disconnectServer);
     auto *quitAction = fileMenu->addAction(QStringLiteral("Quit"), qApp, &QApplication::quit);
@@ -295,12 +338,21 @@ void MainWindow::buildActions()
     codeAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+1")));
     auto *visualAction = viewMenu->addAction(QStringLiteral("Visual mode"), this, &MainWindow::showVisualMode);
     visualAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+2")));
+    auto *graphModeAction = viewMenu->addAction(QStringLiteral("Graph mode"), this, &MainWindow::showGraphMode);
+    graphModeAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+3")));
     auto *sidebarAction = viewMenu->addAction(QStringLiteral("Toggle sidebar"), this, &MainWindow::toggleSidebar);
     sidebarAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+\\")));
 
     auto *pluginMenu = menuBar()->addMenu(QStringLiteral("&Plugins"));
     pluginMenu->addAction(QStringLiteral("Manage plugins…"), this, &MainWindow::managePlugins);
+    pluginMenu->addAction(QStringLiteral("Browse Forge plugin catalog…"), this, &MainWindow::browsePluginCatalog);
     pluginMenu->addAction(QStringLiteral("Reload approved plugins"), this, &MainWindow::reloadPlugins);
+
+    auto *integrationMenu = menuBar()->addMenu(QStringLiteral("&Integrations"));
+    auto *pythonAction = integrationMenu->addAction(QStringLiteral("Python SDK panel"));
+    pythonAction->setCheckable(true);
+    connect(pythonAction, &QAction::toggled, m_pythonDock, &QDockWidget::setVisible);
+    connect(m_pythonDock, &QDockWidget::visibilityChanged, pythonAction, &QAction::setChecked);
 
     auto *helpMenu = menuBar()->addMenu(QStringLiteral("&Help"));
     helpMenu->addAction(QStringLiteral("About JSON API Forge Editor"), this, &MainWindow::showAbout);
@@ -363,6 +415,7 @@ void MainWindow::disconnectServer()
     m_policyReadOnly = true;
     m_policyCreate = false;
     m_policyHooks = false;
+    m_policyGraphs = false;
     m_policyMaxBytes = 0;
     updatePolicyPanel();
     setDirty(false);
@@ -414,6 +467,7 @@ void MainWindow::populateLocalProjects(const QString &rootPath)
     m_policyReadOnly = false;
     m_policyCreate = true;
     m_policyHooks = true;
+    m_policyGraphs = true;
     m_policyMaxBytes = 0;
     updatePolicyPanel();
     m_createAction->setEnabled(true);
@@ -467,9 +521,15 @@ void MainWindow::populateLocalDocuments(const QString &projectPath)
     for (const auto &file : hooksDir.entryList({QStringLiteral("*.py")}, QDir::Files | QDir::Readable, QDir::Name)) {
         add(hooks, QStringLiteral("hooks/%1").arg(file));
     }
+    auto *graphs = new QTreeWidgetItem(m_documents, {QStringLiteral("Operation graphs")});
+    const QDir graphsDir(QDir(projectPath).filePath(QStringLiteral("graphs")));
+    for (const auto &file : graphsDir.entryList({QStringLiteral("*.forgegraph.json")}, QDir::Files | QDir::Readable, QDir::Name)) {
+        add(graphs, QStringLiteral("graphs/%1").arg(file));
+    }
     root->setExpanded(true);
     config->setExpanded(true);
     hooks->setExpanded(true);
+    graphs->setExpanded(true);
 }
 
 void MainWindow::openSelectedDocument()
@@ -508,11 +568,25 @@ void MainWindow::loadDocument(const QString &path, const QByteArray &content, co
     m_updatingEditor = false;
     m_breadcrumb->setText(QStringLiteral("%1  /  %2  ·  %3").arg(currentModeName(m_remoteMode), m_currentProject, path));
     const bool jsonDocument = path.endsWith(QStringLiteral(".json"), Qt::CaseSensitive);
+    const bool graphDocument = path.startsWith(QStringLiteral("graphs/"))
+        && path.endsWith(QStringLiteral(".forgegraph.json"), Qt::CaseSensitive);
     m_codeButton->setEnabled(true);
-    m_visualButton->setEnabled(jsonDocument);
+    m_visualButton->setEnabled(jsonDocument && !graphDocument);
+    m_graphButton->setEnabled(graphDocument);
     m_saveAction->setEnabled(!m_remoteMode || !m_policyReadOnly);
     setDirty(false);
-    showCodeMode();
+    if (graphDocument) {
+        QString graphError;
+        QJsonObject graph;
+        if (DocumentCodec::parseObject(content, &graph, &graphError) && m_graphEditor->setDocument(graph, &graphError)) {
+            showGraphMode();
+        } else {
+            showCodeMode();
+            showStatusMessage(QStringLiteral("Graph opened as code because it is invalid: %1").arg(graphError), 8000);
+        }
+    } else {
+        showCodeMode();
+    }
 }
 
 bool MainWindow::prepareCurrentJson(QJsonObject *object, QByteArray *bytes)
@@ -521,7 +595,9 @@ bool MainWindow::prepareCurrentJson(QJsonObject *object, QByteArray *bytes)
         return false;
     }
     QByteArray current;
-    if (m_workspace->currentWidget() == m_visualDesigner && m_currentDocument.endsWith(QStringLiteral(".json"))) {
+    if (m_workspace->currentWidget() == m_graphEditor && m_currentDocument.endsWith(QStringLiteral(".forgegraph.json"))) {
+        current = DocumentCodec::prettyJson(m_graphEditor->document());
+    } else if (m_workspace->currentWidget() == m_visualDesigner && m_currentDocument.endsWith(QStringLiteral(".json"))) {
         current = DocumentCodec::prettyJson(m_visualDesigner->document());
     } else {
         current = m_codeEditor->toPlainText().toUtf8();
@@ -558,6 +634,10 @@ void MainWindow::saveDocument()
             QMessageBox::warning(this, QStringLiteral("Hook policy"), QStringLiteral("Remote Python hook editing is disabled by the server."));
             return;
         }
+        if (m_currentDocument.startsWith(QStringLiteral("graphs/")) && !m_policyGraphs) {
+            QMessageBox::warning(this, QStringLiteral("Graph policy"), QStringLiteral("Remote operation graph editing is disabled by the server."));
+            return;
+        }
         m_api->saveDocument(m_currentProject, m_currentDocument, bytes, m_currentSha256);
         return;
     }
@@ -573,6 +653,9 @@ void MainWindow::saveDocument()
     }
     m_currentSha256 = DocumentCodec::sha256(bytes);
     setDirty(false);
+    if (m_currentDocument.startsWith(QStringLiteral("graphs/"))) {
+        populateLocalDocuments(m_currentProjectPath);
+    }
     showStatusMessage(QStringLiteral("Saved and fsync-committed %1").arg(m_currentDocument));
 }
 
@@ -600,6 +683,18 @@ void MainWindow::validateProject()
         if (!file.open(QIODevice::ReadOnly) || !DocumentCodec::parseObject(file.readAll(), &object, &error)) {
             valid = false;
             errors.append(QStringLiteral("%1: %2").arg(path, file.isOpen() ? error : file.errorString()));
+        }
+    }
+    const QDir graphs(project.filePath(QStringLiteral("graphs")));
+    for (const auto &name : graphs.entryList({QStringLiteral("*.forgegraph.json")}, QDir::Files, QDir::Name)) {
+        QFile file(graphs.filePath(name));
+        QJsonObject object;
+        QString error;
+        GraphModel graph;
+        if (!file.open(QIODevice::ReadOnly) || !DocumentCodec::parseObject(file.readAll(), &object, &error)
+            || !graph.setDocument(object, &error)) {
+            valid = false;
+            errors.append(QStringLiteral("graphs/%1: %2").arg(name, file.isOpen() ? error : file.errorString()));
         }
     }
     if (valid) {
@@ -670,6 +765,142 @@ void MainWindow::createProject()
     showStatusMessage(QStringLiteral("Created %1. Full schema validation remains available through the server/CLI.").arg(name), 6000);
 }
 
+void MainWindow::createGraph()
+{
+    if (m_currentProject.isEmpty()) {
+        QMessageBox::information(this, QStringLiteral("Choose a project"),
+                                 QStringLiteral("Select a local or remote project before creating an operation graph."));
+        return;
+    }
+    if (!confirmDiscard()) {
+        return;
+    }
+    if (m_remoteMode && (m_policyReadOnly || !m_policyGraphs)) {
+        QMessageBox::warning(this, QStringLiteral("Server policy"),
+                             QStringLiteral("This server does not permit operation graph creation."));
+        return;
+    }
+    bool ok = false;
+    const auto graphName = QInputDialog::getText(this, QStringLiteral("New operation graph"),
+                                                  QStringLiteral("Graph file name (without extension)"), QLineEdit::Normal,
+                                                  QStringLiteral("operation-flow"), &ok)
+                               .trimmed();
+    static const QRegularExpression GraphNamePattern(QStringLiteral(R"(^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$)"));
+    if (!ok) {
+        return;
+    }
+    if (!GraphNamePattern.match(graphName).hasMatch()) {
+        QMessageBox::warning(this, QStringLiteral("Invalid graph name"),
+                             QStringLiteral("Use 1–64 lowercase letters, digits, dots, underscores or hyphens."));
+        return;
+    }
+    const auto target = QInputDialog::getText(this, QStringLiteral("New operation graph"),
+                                               QStringLiteral("Compiled config target"), QLineEdit::Normal,
+                                               QStringLiteral("config/50-%1.json").arg(graphName), &ok)
+                            .trimmed();
+    static const QRegularExpression TargetPattern(QStringLiteral(R"(^config/[A-Za-z0-9][A-Za-z0-9._-]{0,95}\.json$)"));
+    if (!ok) {
+        return;
+    }
+    if (!TargetPattern.match(target).hasMatch()) {
+        QMessageBox::warning(this, QStringLiteral("Invalid target"),
+                             QStringLiteral("The compiled target must be a direct config/*.json path."));
+        return;
+    }
+    const auto relative = QStringLiteral("graphs/%1.forgegraph.json").arg(graphName);
+    if (!m_remoteMode) {
+        QDir project(m_currentProjectPath);
+        if (!project.mkpath(QStringLiteral("graphs"))) {
+            QMessageBox::warning(this, QStringLiteral("Create failed"), QStringLiteral("Could not create the graphs directory."));
+            return;
+        }
+        if (QFileInfo::exists(project.filePath(relative))) {
+            QMessageBox::warning(this, QStringLiteral("Create failed"), QStringLiteral("That graph already exists."));
+            return;
+        }
+    }
+    const auto bytes = DocumentCodec::prettyJson(NodeGraphEditor::starterDocument(target));
+    loadDocument(relative, bytes, QStringLiteral("new"));
+    setDirty(true);
+    showStatusMessage(QStringLiteral("Created an unsaved starter graph. Connect nodes, configure properties, then save."), 8000);
+}
+
+void MainWindow::createFromTemplate()
+{
+    if (m_remoteMode) {
+        QMessageBox::information(this, QStringLiteral("Local templates"),
+                                 QStringLiteral("Templates are staged locally so you can review every file before deployment. Open a local workspace first."));
+        return;
+    }
+    QString root = m_workspaceRoot;
+    if (root.isEmpty()) {
+        root = QFileDialog::getExistingDirectory(this, QStringLiteral("Choose workspace for the new project"));
+    }
+    if (root.isEmpty()) {
+        return;
+    }
+    QString catalogError;
+    const auto definitions = TemplateManager::templates(&catalogError);
+    if (definitions.isEmpty()) {
+        QMessageBox::critical(this, QStringLiteral("Template catalog"), catalogError);
+        return;
+    }
+    QStringList choices;
+    for (const auto &definition : definitions) {
+        choices.append(QStringLiteral("%1  ·  %2").arg(definition.category, definition.name));
+    }
+    bool ok = false;
+    const auto choice = QInputDialog::getItem(this, QStringLiteral("New from template"), QStringLiteral("Project template"), choices,
+                                               0, false, &ok);
+    if (!ok) {
+        return;
+    }
+    const auto index = choices.indexOf(choice);
+    if (index < 0) {
+        return;
+    }
+    const auto &definition = definitions.at(index);
+    const auto confirmation = QMessageBox::question(
+        this, definition.name,
+        QStringLiteral("%1\n\nCreate this template with secured CRUD, analytics RPC, realtime channel and an editable node graph?")
+            .arg(definition.description),
+        QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Yes);
+    if (confirmation != QMessageBox::Yes) {
+        return;
+    }
+    const auto suggestedDirectory = QString(definition.name).remove(QRegularExpression(QStringLiteral("[^A-Za-z0-9]+")));
+    const auto directoryName = QInputDialog::getText(this, QStringLiteral("Project directory"), QStringLiteral("Directory name"),
+                                                      QLineEdit::Normal, suggestedDirectory, &ok)
+                                   .trimmed();
+    if (!ok) {
+        return;
+    }
+    const auto suggestedSlug = QString(directoryName).toLower().replace(QRegularExpression(QStringLiteral("[^a-z0-9]+")),
+                                                                         QStringLiteral("-"))
+                                   .remove(QRegularExpression(QStringLiteral("^-|-$")));
+    const auto slug = QInputDialog::getText(this, QStringLiteral("Project slug"), QStringLiteral("Slug"), QLineEdit::Normal,
+                                             suggestedSlug, &ok)
+                          .trimmed();
+    if (!ok) {
+        return;
+    }
+    QString error;
+    if (!TemplateManager::createProject(definition, root, directoryName, slug, &error)) {
+        QMessageBox::critical(this, QStringLiteral("Template creation failed"), error);
+        return;
+    }
+    populateLocalProjects(root);
+    for (int row = 0; row < m_projects->count(); ++row) {
+        if (m_projects->item(row)->text() == directoryName) {
+            m_projects->setCurrentRow(row);
+            break;
+        }
+    }
+    showStatusMessage(QStringLiteral("Created %1 from the %2 template. Review it, then run forge validate.")
+                          .arg(directoryName, definition.name),
+                      8000);
+}
+
 void MainWindow::showCodeMode()
 {
     if (m_currentDocument.isEmpty()) {
@@ -680,10 +911,15 @@ void MainWindow::showCodeMode()
         m_updatingEditor = true;
         m_codeEditor->setPlainText(QString::fromUtf8(DocumentCodec::prettyJson(m_visualDesigner->document())));
         m_updatingEditor = false;
+    } else if (m_workspace->currentWidget() == m_graphEditor && m_graphButton->isEnabled()) {
+        m_updatingEditor = true;
+        m_codeEditor->setPlainText(QString::fromUtf8(DocumentCodec::prettyJson(m_graphEditor->document())));
+        m_updatingEditor = false;
     }
     m_workspace->setCurrentWidget(m_codeEditor);
     m_codeButton->setChecked(true);
     m_visualButton->setChecked(false);
+    m_graphButton->setChecked(false);
     animateWorkspace(m_codeEditor);
 }
 
@@ -696,6 +932,8 @@ void MainWindow::showWelcome()
     m_codeButton->setEnabled(false);
     m_visualButton->setChecked(false);
     m_visualButton->setEnabled(false);
+    m_graphButton->setChecked(false);
+    m_graphButton->setEnabled(false);
     m_breadcrumb->setText(m_currentProject.isEmpty()
                               ? QStringLiteral("Choose a workspace or connect to a Forge server")
                               : QStringLiteral("%1  /  %2  ·  Choose a document")
@@ -718,7 +956,27 @@ void MainWindow::showVisualMode()
     m_workspace->setCurrentWidget(m_visualDesigner);
     m_codeButton->setChecked(false);
     m_visualButton->setChecked(true);
+    m_graphButton->setChecked(false);
     animateWorkspace(m_visualDesigner);
+}
+
+void MainWindow::showGraphMode()
+{
+    if (!m_graphButton->isEnabled()) {
+        return;
+    }
+    QJsonObject object;
+    QString error;
+    if (!DocumentCodec::parseObject(m_codeEditor->toPlainText().toUtf8(), &object, &error)
+        || !m_graphEditor->setDocument(object, &error)) {
+        QMessageBox::warning(this, QStringLiteral("Cannot open graph mode"), error);
+        return;
+    }
+    m_workspace->setCurrentWidget(m_graphEditor);
+    m_codeButton->setChecked(false);
+    m_visualButton->setChecked(false);
+    m_graphButton->setChecked(true);
+    animateWorkspace(m_graphEditor);
 }
 
 void MainWindow::animateWorkspace(QWidget *widget)
@@ -762,6 +1020,7 @@ void MainWindow::handleApiJson(const QString &operation, const QJsonObject &payl
         m_policyReadOnly = payload.value(QStringLiteral("read_only")).toBool(true);
         m_policyCreate = payload.value(QStringLiteral("allow_create_projects")).toBool(false);
         m_policyHooks = payload.value(QStringLiteral("allow_hooks")).toBool(false);
+        m_policyGraphs = payload.value(QStringLiteral("allow_graphs")).toBool(false);
         m_policyMaxBytes = payload.value(QStringLiteral("max_document_bytes")).toInt();
         m_connectionLabel->setText(QStringLiteral("●  Secure remote"));
         m_connectionLabel->setObjectName(QStringLiteral("connectionOnline"));
@@ -807,6 +1066,7 @@ void MainWindow::handleApiJson(const QString &operation, const QJsonObject &payl
         m_currentSha256 = payload.value(QStringLiteral("sha256")).toString();
         setDirty(false);
         showStatusMessage(QStringLiteral("Server validated and atomically saved %1").arg(m_currentDocument));
+        m_api->fetchDocuments(m_currentProject);
         return;
     }
     if (operation.startsWith(QStringLiteral("validate:"))) {
@@ -842,13 +1102,14 @@ void MainWindow::handleApiError(const QString &operation, int statusCode, const 
 void MainWindow::updatePolicyPanel()
 {
     if (!m_remoteMode) {
-        m_policyLabel->setText(QStringLiteral("Local files · atomic save\nHooks: enabled locally\nFull schema: use Forge CLI/server"));
+        m_policyLabel->setText(QStringLiteral("Local files · atomic save\nHooks + graphs: enabled locally\nFull schema: use Forge CLI/server"));
         return;
     }
-    m_policyLabel->setText(QStringLiteral("%1\nCreate projects: %2\nPython hooks: %3\nDocument limit: %4 KiB")
+    m_policyLabel->setText(QStringLiteral("%1\nCreate projects: %2\nPython hooks: %3\nOperation graphs: %4\nDocument limit: %5 KiB")
                                .arg(m_policyReadOnly ? QStringLiteral("Read only") : QStringLiteral("Validated writes"),
                                     m_policyCreate ? QStringLiteral("allowed") : QStringLiteral("blocked"),
-                                    m_policyHooks ? QStringLiteral("allowed") : QStringLiteral("blocked"))
+                                    m_policyHooks ? QStringLiteral("allowed") : QStringLiteral("blocked"),
+                                    m_policyGraphs ? QStringLiteral("allowed") : QStringLiteral("blocked"))
                                .arg(m_policyMaxBytes / 1024));
     m_saveAction->setEnabled(!m_currentDocument.isEmpty() && !m_policyReadOnly);
 }
@@ -892,15 +1153,17 @@ void MainWindow::managePlugins()
     warning->setObjectName(QStringLiteral("warningCard"));
     layout->addWidget(warning);
     auto *tree = new QTreeWidget(&dialog);
-    tree->setColumnCount(5);
+    tree->setColumnCount(6);
     tree->setHeaderLabels({QStringLiteral("Enabled"), QStringLiteral("Plugin"), QStringLiteral("Version"), QStringLiteral("Status"),
-                           QStringLiteral("Manifest")});
+                           QStringLiteral("Permissions"), QStringLiteral("Manifest")});
     tree->header()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
-    tree->header()->setSectionResizeMode(4, QHeaderView::Stretch);
+    tree->header()->setSectionResizeMode(5, QHeaderView::Stretch);
     const auto enabled = enabledPluginIds();
     for (const auto &descriptor : m_pluginManager->discover()) {
         auto *item = new QTreeWidgetItem(tree, {QString(), descriptor.name, descriptor.version,
                                                 descriptor.error.isEmpty() ? QStringLiteral("Compatible") : descriptor.error,
+                                                descriptor.permissions.isEmpty() ? QStringLiteral("none declared")
+                                                                                 : descriptor.permissions.join(QStringLiteral(", ")),
                                                 descriptor.manifestPath});
         item->setData(0, Qt::UserRole, descriptor.id);
         item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
@@ -928,6 +1191,122 @@ void MainWindow::managePlugins()
     reloadPlugins();
 }
 
+void MainWindow::browsePluginCatalog()
+{
+    QDialog dialog(this);
+    dialog.setWindowTitle(QStringLiteral("Forge-backed plugin catalog"));
+    dialog.resize(980, 650);
+    auto *layout = new QVBoxLayout(&dialog);
+    auto *notice = new QLabel(
+        QStringLiteral("Catalog metadata is read through a normal JSON API Forge resource. The Editor never downloads, installs, enables, or executes native code automatically. Review publisher, permissions, HTTPS package URL and SHA-256 before a separate manual install."),
+        &dialog);
+    notice->setObjectName(QStringLiteral("warningCard"));
+    notice->setWordWrap(true);
+    layout->addWidget(notice);
+
+    QSettings settings;
+    auto *server = new QLineEdit(settings.value(QStringLiteral("pluginCatalog/server"),
+                                                m_api->isConfigured() ? m_api->serverUrl().toString()
+                                                                      : QStringLiteral("https://forge.example.com"))
+                                     .toString(),
+                                 &dialog);
+    auto *project = new QLineEdit(settings.value(QStringLiteral("pluginCatalog/project"), QStringLiteral("editor-plugin-registry"))
+                                      .toString(),
+                                  &dialog);
+    auto *resource = new QLineEdit(settings.value(QStringLiteral("pluginCatalog/resource"), QStringLiteral("editor/plugins"))
+                                       .toString(),
+                                   &dialog);
+    auto *apiKey = new QLineEdit(&dialog);
+    apiKey->setEchoMode(QLineEdit::Password);
+    apiKey->setPlaceholderText(QStringLiteral("Read-only Forge API key (not stored)"));
+    auto *allowHttp = new QCheckBox(QStringLiteral("Allow plain HTTP for loopback development only"), &dialog);
+    auto *form = new QFormLayout;
+    form->addRow(QStringLiteral("Forge server"), server);
+    form->addRow(QStringLiteral("Catalog project"), project);
+    form->addRow(QStringLiteral("Catalog resource"), resource);
+    form->addRow(QStringLiteral("API key"), apiKey);
+    form->addRow(QString(), allowHttp);
+    layout->addLayout(form);
+
+    auto *status = new QLabel(QStringLiteral("Enter a read-only catalog key, then fetch up to 100 reviewed releases."), &dialog);
+    status->setObjectName(QStringLiteral("policyCard"));
+    status->setWordWrap(true);
+    layout->addWidget(status);
+    auto *tree = new QTreeWidget(&dialog);
+    tree->setColumnCount(7);
+    tree->setHeaderLabels({QStringLiteral("Plugin"), QStringLiteral("Version"), QStringLiteral("Status"),
+                           QStringLiteral("Platform"), QStringLiteral("Publisher"), QStringLiteral("Permissions"),
+                           QStringLiteral("SHA-256")});
+    tree->header()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    tree->header()->setSectionResizeMode(5, QHeaderView::Stretch);
+    tree->setRootIsDecorated(false);
+    tree->setAlternatingRowColors(true);
+    layout->addWidget(tree, 1);
+
+    auto *buttonRow = new QHBoxLayout;
+    auto *fetch = new QPushButton(QStringLiteral("Fetch from Forge"), &dialog);
+    fetch->setObjectName(QStringLiteral("primaryButton"));
+    auto *copyUrl = new QPushButton(QStringLiteral("Copy selected package URL"), &dialog);
+    copyUrl->setEnabled(false);
+    auto *close = new QPushButton(QStringLiteral("Close"), &dialog);
+    buttonRow->addWidget(fetch);
+    buttonRow->addWidget(copyUrl);
+    buttonRow->addStretch();
+    buttonRow->addWidget(close);
+    layout->addLayout(buttonRow);
+
+    auto *client = new PluginCatalogClient(&dialog);
+    connect(fetch, &QPushButton::clicked, &dialog, [=, &settings] {
+        tree->clear();
+        copyUrl->setEnabled(false);
+        fetch->setEnabled(false);
+        status->setText(QStringLiteral("Loading catalog through JSON API Forge…"));
+        settings.setValue(QStringLiteral("pluginCatalog/server"), server->text().trimmed());
+        settings.setValue(QStringLiteral("pluginCatalog/project"), project->text().trimmed());
+        settings.setValue(QStringLiteral("pluginCatalog/resource"), resource->text().trimmed());
+        client->fetch(QUrl(server->text().trimmed()), apiKey->text().toUtf8(), project->text().trimmed(), resource->text().trimmed(),
+                      allowHttp->isChecked());
+    });
+    connect(client, &PluginCatalogClient::catalogReceived, &dialog, [=](const QJsonArray &items) {
+        for (const auto &value : items) {
+            const auto item = value.toObject();
+            QStringList permissions;
+            for (const auto &permission : item.value(QStringLiteral("permissions")).toArray()) {
+                permissions.append(permission.toString());
+            }
+            const auto id = item.value(QStringLiteral("plugin_id")).toString(item.value(QStringLiteral("id")).toString());
+            auto *row = new QTreeWidgetItem(tree, {QStringLiteral("%1\n%2").arg(item.value(QStringLiteral("name")).toString(), id),
+                                                   item.value(QStringLiteral("version")).toString(),
+                                                   item.value(QStringLiteral("status")).toString(QStringLiteral("unknown")),
+                                                   item.value(QStringLiteral("platform")).toString(QStringLiteral("any")),
+                                                   item.value(QStringLiteral("publisher")).toString(QStringLiteral("unknown")),
+                                                   permissions.join(QStringLiteral(", ")),
+                                                   item.value(QStringLiteral("sha256")).toString().left(16) + QStringLiteral("…")});
+            row->setData(0, Qt::UserRole, item.value(QStringLiteral("download_url")).toString());
+            row->setToolTip(0, item.value(QStringLiteral("description")).toString());
+            row->setToolTip(6, item.value(QStringLiteral("sha256")).toString());
+        }
+        fetch->setEnabled(true);
+        status->setText(QStringLiteral("Forge returned %1 validated plugin release records. No code was downloaded or enabled.")
+                            .arg(items.size()));
+    });
+    connect(client, &PluginCatalogClient::requestFailed, &dialog, [=](const QString &message) {
+        fetch->setEnabled(true);
+        status->setText(QStringLiteral("Catalog request failed: %1").arg(message));
+    });
+    connect(tree, &QTreeWidget::itemSelectionChanged, &dialog, [=] { copyUrl->setEnabled(tree->currentItem() != nullptr); });
+    connect(copyUrl, &QPushButton::clicked, &dialog, [=] {
+        if (tree->currentItem() != nullptr) {
+            QApplication::clipboard()->setText(tree->currentItem()->data(0, Qt::UserRole).toString());
+            status->setText(
+                QStringLiteral("Package URL copied. Verify the downloaded file against the full SHA-256 before review/install."));
+        }
+    });
+    connect(close, &QPushButton::clicked, &dialog, &QDialog::accept);
+    dialog.exec();
+    apiKey->clear();
+}
+
 QSet<QString> MainWindow::enabledPluginIds() const
 {
     const auto values = QSettings().value(QStringLiteral("plugins/enabledIds")).toStringList();
@@ -952,7 +1331,7 @@ void MainWindow::showAbout()
     QMessageBox box(this);
     box.setWindowTitle(QStringLiteral("About JSON API Forge Editor"));
     box.setIconPixmap(QPixmap(QStringLiteral(":/branding/logo.png")).scaled(112, 112, Qt::KeepAspectRatio, Qt::SmoothTransformation));
-    box.setText(QStringLiteral("<h2>JSON API Forge Editor 0.4.2</h2><p>A policy-aware C++20 / Qt 6 editor for local and remote Forge projects.</p>"
+    box.setText(QStringLiteral("<h2>JSON API Forge Editor 0.5.0</h2><p>A policy-aware C++20 / Qt 6 editor for local and remote Forge projects.</p>"
                                "<p>Code + visual configuration · optimistic concurrency · validated atomic saves · explicit native plugin approval.</p>"));
     box.exec();
 }
@@ -960,6 +1339,11 @@ void MainWindow::showAbout()
 void MainWindow::addPaletteComponent(const QString &label, const QString &collection, const QJsonObject &documentTemplate)
 {
     m_visualDesigner->addPaletteComponent(label, collection, documentTemplate);
+}
+
+void MainWindow::addGraphNodeType(const QString &label, const QString &type, const QJsonObject &defaultProperties)
+{
+    m_graphEditor->addPaletteNode(label, type, defaultProperties);
 }
 
 void MainWindow::addToolAction(QAction *action)

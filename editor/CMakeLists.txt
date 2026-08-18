@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(JSONAPIForgeEditor VERSION 0.4.2 LANGUAGES CXX)
+project(JSONAPIForgeEditor VERSION 0.5.0 LANGUAGES CXX)
 
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
@@ -8,7 +8,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-set(FORGE_EDITOR_QT_MIN_VERSION "6.6" CACHE STRING "Minimum Qt version; CI/release policy keeps this at 6.6+")
+set(FORGE_EDITOR_QT_MIN_VERSION "6.4" CACHE STRING "Minimum supported Qt version")
 find_package(Qt6 ${FORGE_EDITOR_QT_MIN_VERSION} REQUIRED COMPONENTS Core Gui Widgets Network)
 option(FORGE_EDITOR_WARNINGS_AS_ERRORS "Treat editor compiler warnings as errors" OFF)
 
@@ -36,10 +36,20 @@ add_library(forge_editor_core STATIC
   src/ConnectionDialog.hpp
   src/DocumentCodec.cpp
   src/DocumentCodec.hpp
+  src/GraphModel.cpp
+  src/GraphModel.hpp
   src/JsonHighlighter.cpp
   src/JsonHighlighter.hpp
+  src/NodeGraphEditor.cpp
+  src/NodeGraphEditor.hpp
   src/PluginManager.cpp
   src/PluginManager.hpp
+  src/PluginCatalogClient.cpp
+  src/PluginCatalogClient.hpp
+  src/PythonSdkPanel.cpp
+  src/PythonSdkPanel.hpp
+  src/TemplateManager.cpp
+  src/TemplateManager.hpp
   src/VisualDesigner.cpp
   src/VisualDesigner.hpp
   include/forgeeditor/IEditorPlugin.hpp
@@ -89,7 +99,7 @@ endif()
 
 if(BUILD_TESTING)
   find_package(Qt6 ${FORGE_EDITOR_QT_MIN_VERSION} REQUIRED COMPONENTS Test)
-  qt_add_executable(forge_editor_tests tests/tst_editor_core.cpp)
+  qt_add_executable(forge_editor_tests tests/tst_editor_core.cpp resources/editor.qrc)
   target_link_libraries(forge_editor_tests PRIVATE forge_editor_core Qt6::Test)
   forge_editor_enable_warnings(forge_editor_tests)
   add_test(NAME forge_editor_core COMMAND forge_editor_tests)

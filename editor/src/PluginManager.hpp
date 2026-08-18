@@ -13,6 +13,8 @@ struct PluginDescriptor {
     QString version;
     QString manifestPath;
     QString libraryPath;
+    QString sha256;
+    QStringList permissions;
     int apiVersion = 0;
     QString error;
 };

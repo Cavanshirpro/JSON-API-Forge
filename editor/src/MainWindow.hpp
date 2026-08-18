@@ -11,7 +11,9 @@ class QAction;
 class CodeEditor;
 class QLabel;
 class QListWidget;
+class NodeGraphEditor;
 class QProgressBar;
+class PythonSdkPanel;
 class QStackedWidget;
 class QToolBar;
 class QToolButton;
@@ -24,8 +26,10 @@ class MainWindow final : public QMainWindow, public ForgeEditor::EditorHost {
 public:
     explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow() override;
+    void showGraphPreview();
 
     void addPaletteComponent(const QString &label, const QString &collection, const QJsonObject &documentTemplate) override;
+    void addGraphNodeType(const QString &label, const QString &type, const QJsonObject &defaultProperties) override;
     void addToolAction(QAction *action) override;
     void addDockWidget(Qt::DockWidgetArea area, QDockWidget *dock) override;
     void showStatusMessage(const QString &message, int timeoutMs = 4000) override;
@@ -42,10 +46,14 @@ private slots:
     void saveDocument();
     void validateProject();
     void createProject();
+    void createFromTemplate();
     void showCodeMode();
     void showVisualMode();
+    void showGraphMode();
+    void createGraph();
     void toggleSidebar();
     void managePlugins();
+    void browsePluginCatalog();
     void showAbout();
     void handleApiJson(const QString &operation, const QJsonObject &payload);
     void handleApiError(const QString &operation, int statusCode, const QString &message);
@@ -77,11 +85,15 @@ private:
     QProgressBar *m_activity = nullptr;
     CodeEditor *m_codeEditor = nullptr;
     VisualDesigner *m_visualDesigner = nullptr;
+    NodeGraphEditor *m_graphEditor = nullptr;
     QStackedWidget *m_workspace = nullptr;
     QWidget *m_welcomePage = nullptr;
     QToolButton *m_codeButton = nullptr;
     QToolButton *m_visualButton = nullptr;
+    QToolButton *m_graphButton = nullptr;
     QToolBar *m_pluginToolBar = nullptr;
+    QDockWidget *m_pythonDock = nullptr;
+    PythonSdkPanel *m_pythonPanel = nullptr;
 
     QAction *m_saveAction = nullptr;
     QAction *m_validateAction = nullptr;
@@ -100,5 +112,6 @@ private:
     bool m_policyReadOnly = true;
     bool m_policyCreate = false;
     bool m_policyHooks = false;
+    bool m_policyGraphs = false;
     int m_policyMaxBytes = 0;
 };

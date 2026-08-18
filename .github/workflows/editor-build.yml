@@ -21,6 +21,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
@@ -66,6 +68,8 @@ jobs:
           - {os: macos-15, label: macOS-arm64, artifact: macos-arm64}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: jurplel/install-qt-action@v4
         with:
           version: "6.8.3"
@@ -132,6 +136,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/download-artifact@v8
         with:
           pattern: JSON-API-Forge-Editor-v0.4.2-*

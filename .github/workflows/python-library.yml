@@ -3,7 +3,7 @@ name: Python library build
 on:
   push:
     branches: [python-library]
-    tags: ["v0.4.*"]
+    tags: ["v0.5.*"]
   pull_request:
     branches: [python-library]
   workflow_dispatch:
@@ -37,7 +37,7 @@ jobs:
           scope = {}
           exec((root / "json_api_forge/_version.py").read_text(), scope)
           versions = {package, (root / "VERSION").read_text().strip(), scope["__version__"]}
-          if versions != {"0.4.2"}:
+          if versions != {"0.5.0"}:
               raise SystemExit(f"version mismatch: {sorted(versions)}")
           if os.environ.get("GITHUB_REF_TYPE") == "tag" and os.environ.get("GITHUB_REF_NAME") != f"v{package}":
               raise SystemExit(f"tag {os.environ.get('GITHUB_REF_NAME')} does not match package v{package}")
@@ -155,33 +155,46 @@ jobs:
               raise SystemExit(f"wheel is not universal: {wheel.name}")
           with zipfile.ZipFile(wheel) as archive:
               names = set(archive.namelist())
-          required = {"json_api_forge/__init__.py", "json_api_forge/client.py", "json_api_forge/py.typed"}
+              metadata_name = next(name for name in names if name.endswith(".dist-info/METADATA"))
+              metadata = archive.read(metadata_name).decode()
+          required = {
+              "json_api_forge/__init__.py",
+              "json_api_forge/client.py",
+              "json_api_forge/enterprise.py",
+              "json_api_forge/integrations/__init__.py",
+              "json_api_forge/integrations/ddm.py",
+              "json_api_forge/integrations/younglion.py",
+              "json_api_forge/py.typed",
+          }
           missing = required - names
           if missing:
               raise SystemExit(f"wheel missing files: {sorted(missing)}")
+          for extra in ("younglion", "ddm"):
+              if f"Provides-Extra: {extra}" not in metadata:
+                  raise SystemExit(f"wheel metadata is missing the {extra!r} extra")
           PY
       - name: Install wheel outside the checkout
         run: |
           python -m venv "${{ runner.temp }}/forge-wheel"
           "${{ runner.temp }}/forge-wheel/bin/python" -m pip install dist/*.whl
           cd "${{ runner.temp }}"
-          "${{ runner.temp }}/forge-wheel/bin/python" -c "import json_api_forge; assert json_api_forge.__version__ == '0.4.2'"
+          "${{ runner.temp }}/forge-wheel/bin/python" -c "import json_api_forge; assert json_api_forge.__version__ == '0.5.0'"
           "${{ runner.temp }}/forge-wheel/bin/forge" --help
       - name: Assemble one downloadable release bundle
         run: |
           mkdir -p release/python-library
           cp dist/* release/python-library/
-          git archive --format=zip --prefix=JSON-API-Forge-python-library-v0.4.2/ -o release/python-library/JSON-API-Forge-python-library-v0.4.2-source.zip HEAD
+          git archive --format=zip --prefix=JSON-API-Forge-python-library-v0.5.0/ -o release/python-library/JSON-API-Forge-python-library-v0.5.0-source.zip HEAD
           cd release/python-library
           sha256sum * > SHA256SUMS
           cd ..
-          zip -r JSON-API-Forge-python-library-v0.4.2-bundle.zip python-library
-          sha256sum JSON-API-Forge-python-library-v0.4.2-bundle.zip > JSON-API-Forge-python-library-v0.4.2-bundle.zip.sha256
+          zip -r JSON-API-Forge-python-library-v0.5.0-bundle.zip python-library
+          sha256sum JSON-API-Forge-python-library-v0.5.0-bundle.zip > JSON-API-Forge-python-library-v0.5.0-bundle.zip.sha256
       - uses: actions/upload-artifact@v7
         with:
-          name: JSON-API-Forge-python-library-v0.4.2
+          name: JSON-API-Forge-python-library-v0.5.0
           path: |
-            release/JSON-API-Forge-python-library-v0.4.2-bundle.zip
-            release/JSON-API-Forge-python-library-v0.4.2-bundle.zip.sha256
+            release/JSON-API-Forge-python-library-v0.5.0-bundle.zip
+            release/JSON-API-Forge-python-library-v0.5.0-bundle.zip.sha256
           if-no-files-found: error
           retention-days: 30

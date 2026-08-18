@@ -31,6 +31,10 @@ coverage.json
 .coverage
 htmlcov/
 
+# JavaScript / TypeScript dependencies and test output
+node_modules/
+.test-dist/
+
 # Build / packaging
 build/
 dist/

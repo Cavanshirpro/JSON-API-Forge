@@ -16,3 +16,14 @@ class ForgeResponse(Generic[T]):
 
 
 JsonObject = dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class RequestAttempt:
+    method: str
+    path: str
+    attempt: int
+    elapsed_seconds: float
+    status_code: int | None
+    request_id: str | None
+    error: str | None

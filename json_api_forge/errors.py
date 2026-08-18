@@ -16,6 +16,14 @@ class ForgeResponseTooLarge(ForgeError):
     """A response exceeded the configured safety limit."""
 
 
+class ForgeClusterUnavailable(ForgeError):
+    """No configured cluster endpoint could complete the request."""
+
+
+class ForgeIntegrationError(ForgeError):
+    """An optional integration is missing or returned an incompatible value."""
+
+
 @dataclass(slots=True)
 class ForgeHTTPError(ForgeError):
     status_code: int

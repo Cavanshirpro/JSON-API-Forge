@@ -1,18 +1,31 @@
 from __future__ import annotations
 
+import asyncio
 import ipaddress
 import json
+import time
 import uuid
-from collections.abc import Mapping
+from collections.abc import Callable, Iterator, Mapping
 from typing import Any
 from urllib.parse import quote, unquote, urlsplit
 
 import httpx
 
 from .errors import ForgeHTTPError, ForgeResponseTooLarge, ForgeTransportError
-from .models import ForgeResponse, JsonObject
+from .models import ForgeResponse, JsonObject, RequestAttempt
+from .options import RetryPolicy
 
 _JSON_ACCEPT = "application/json"
+
+
+def _notify(observer: Callable[[RequestAttempt], None] | None, event: RequestAttempt) -> None:
+    if observer is None:
+        return
+    try:
+        observer(event)
+    except Exception:
+        # Observability must not change application request semantics.
+        return
 
 
 def _base_url(value: str, *, allow_insecure_http: bool) -> str:
@@ -166,6 +179,8 @@ class ForgeClient:
         max_response_bytes: int = 8 * 1024 * 1024,
         allow_insecure_http: bool = False,
         transport: httpx.BaseTransport | None = None,
+        retry_policy: RetryPolicy | None = None,
+        observer: Callable[[RequestAttempt], None] | None = None,
     ):
         if api_key is not None and (not api_key or len(api_key) > 4096 or any(ch in api_key for ch in "\r\n\0")):
             raise ValueError("api_key must be non-empty, at most 4096 characters, and contain no control line breaks or NUL")
@@ -173,6 +188,8 @@ class ForgeClient:
             raise ValueError("max_response_bytes must be at least 1024")
         self.api_key = api_key
         self.max_response_bytes = int(max_response_bytes)
+        self.retry_policy = retry_policy
+        self.observer = observer
         self._client = httpx.Client(
             base_url=_base_url(base_url, allow_insecure_http=allow_insecure_http),
             timeout=timeout,
@@ -193,20 +210,80 @@ class ForgeClient:
         idempotency_key: str | None = None,
         expect_json: bool = True,
     ) -> ForgeResponse[Any]:
-        try:
-            with self._client.stream(
-                method.upper(),
-                _relative_path(path),
-                json=json_body,
-                params=params,
-                headers=_headers(self.api_key, request_id, idempotency_key, headers),
-            ) as response:
-                content = _bounded_content(response, self.max_response_bytes)
-        except ForgeResponseTooLarge:
-            raise
-        except httpx.HTTPError as exc:
-            raise ForgeTransportError(str(exc)) from exc
-        return _decode_response(response, content, expect_json=expect_json)
+        normalized_method = method.upper()
+        normalized_path = _relative_path(path)
+        effective_request_id = request_id or str(uuid.uuid4())
+        attempt = 0
+        while True:
+            attempt += 1
+            started = time.monotonic()
+            try:
+                with self._client.stream(
+                    normalized_method,
+                    normalized_path,
+                    json=json_body,
+                    params=params,
+                    headers=_headers(self.api_key, effective_request_id, idempotency_key, headers),
+                ) as response:
+                    content = _bounded_content(response, self.max_response_bytes)
+                result = _decode_response(response, content, expect_json=expect_json)
+            except ForgeResponseTooLarge as exc:
+                _notify(
+                    self.observer,
+                    RequestAttempt(normalized_method, normalized_path, attempt, time.monotonic() - started, None, None, str(exc)),
+                )
+                raise
+            except ForgeHTTPError as exc:
+                _notify(
+                    self.observer,
+                    RequestAttempt(
+                        normalized_method,
+                        normalized_path,
+                        attempt,
+                        time.monotonic() - started,
+                        exc.status_code,
+                        exc.request_id,
+                        str(exc),
+                    ),
+                )
+                policy = self.retry_policy
+                if (
+                    policy is None
+                    or attempt >= policy.max_attempts
+                    or exc.status_code not in policy.retry_statuses
+                    or not policy.permits(normalized_method, idempotency_key=idempotency_key)
+                ):
+                    raise
+                time.sleep(policy.delay(attempt, retry_after=exc.retry_after))
+                continue
+            except httpx.HTTPError as exc:
+                wrapped = ForgeTransportError(str(exc))
+                _notify(
+                    self.observer,
+                    RequestAttempt(normalized_method, normalized_path, attempt, time.monotonic() - started, None, None, str(wrapped)),
+                )
+                policy = self.retry_policy
+                if (
+                    policy is None
+                    or attempt >= policy.max_attempts
+                    or not policy.permits(normalized_method, idempotency_key=idempotency_key)
+                ):
+                    raise wrapped from exc
+                time.sleep(policy.delay(attempt))
+                continue
+            _notify(
+                self.observer,
+                RequestAttempt(
+                    normalized_method,
+                    normalized_path,
+                    attempt,
+                    time.monotonic() - started,
+                    result.status_code,
+                    result.request_id,
+                    None,
+                ),
+            )
+            return result
 
     def health(self) -> ForgeResponse[JsonObject]:
         return self.request("GET", "health")
@@ -246,6 +323,37 @@ class ForgeClient:
             idempotency_key=idempotency_key,
         )
 
+    def iter_items(
+        self,
+        project: str,
+        resource: str,
+        *,
+        params: Mapping[str, Any] | None = None,
+        page_size: int = 100,
+        max_items: int = 10_000,
+    ) -> Iterator[JsonObject]:
+        if not 1 <= page_size <= 1000 or not 1 <= max_items <= 1_000_000:
+            raise ValueError("page_size or max_items is outside the supported bounds")
+        offset = 0
+        yielded = 0
+        base_params = dict(params or {})
+        while yielded < max_items:
+            page_params = {**base_params, "limit": min(page_size, max_items - yielded), "offset": offset}
+            response = self.list_items(project, resource, params=page_params)
+            if not isinstance(response.data, dict) or not isinstance(response.data.get("items"), list):
+                raise ForgeHTTPError(response.status_code, "List response does not contain an items array", response.request_id)
+            items = response.data["items"]
+            for item in items:
+                if not isinstance(item, dict):
+                    raise ForgeHTTPError(response.status_code, "List response contains a non-object item", response.request_id)
+                yield item
+                yielded += 1
+                if yielded >= max_items:
+                    return
+            if len(items) < page_params["limit"]:
+                return
+            offset += len(items)
+
     def close(self) -> None:
         self._client.close()
 
@@ -268,6 +376,8 @@ class AsyncForgeClient:
         max_response_bytes: int = 8 * 1024 * 1024,
         allow_insecure_http: bool = False,
         transport: httpx.AsyncBaseTransport | None = None,
+        retry_policy: RetryPolicy | None = None,
+        observer: Callable[[RequestAttempt], None] | None = None,
     ):
         if api_key is not None and (not api_key or len(api_key) > 4096 or any(ch in api_key for ch in "\r\n\0")):
             raise ValueError("api_key must be non-empty, at most 4096 characters, and contain no control line breaks or NUL")
@@ -275,6 +385,8 @@ class AsyncForgeClient:
             raise ValueError("max_response_bytes must be at least 1024")
         self.api_key = api_key
         self.max_response_bytes = int(max_response_bytes)
+        self.retry_policy = retry_policy
+        self.observer = observer
         self._client = httpx.AsyncClient(
             base_url=_base_url(base_url, allow_insecure_http=allow_insecure_http),
             timeout=timeout,
@@ -295,20 +407,80 @@ class AsyncForgeClient:
         idempotency_key: str | None = None,
         expect_json: bool = True,
     ) -> ForgeResponse[Any]:
-        try:
-            async with self._client.stream(
-                method.upper(),
-                _relative_path(path),
-                json=json_body,
-                params=params,
-                headers=_headers(self.api_key, request_id, idempotency_key, headers),
-            ) as response:
-                content = await _bounded_content_async(response, self.max_response_bytes)
-        except ForgeResponseTooLarge:
-            raise
-        except httpx.HTTPError as exc:
-            raise ForgeTransportError(str(exc)) from exc
-        return _decode_response(response, content, expect_json=expect_json)
+        normalized_method = method.upper()
+        normalized_path = _relative_path(path)
+        effective_request_id = request_id or str(uuid.uuid4())
+        attempt = 0
+        while True:
+            attempt += 1
+            started = time.monotonic()
+            try:
+                async with self._client.stream(
+                    normalized_method,
+                    normalized_path,
+                    json=json_body,
+                    params=params,
+                    headers=_headers(self.api_key, effective_request_id, idempotency_key, headers),
+                ) as response:
+                    content = await _bounded_content_async(response, self.max_response_bytes)
+                result = _decode_response(response, content, expect_json=expect_json)
+            except ForgeResponseTooLarge as exc:
+                _notify(
+                    self.observer,
+                    RequestAttempt(normalized_method, normalized_path, attempt, time.monotonic() - started, None, None, str(exc)),
+                )
+                raise
+            except ForgeHTTPError as exc:
+                _notify(
+                    self.observer,
+                    RequestAttempt(
+                        normalized_method,
+                        normalized_path,
+                        attempt,
+                        time.monotonic() - started,
+                        exc.status_code,
+                        exc.request_id,
+                        str(exc),
+                    ),
+                )
+                policy = self.retry_policy
+                if (
+                    policy is None
+                    or attempt >= policy.max_attempts
+                    or exc.status_code not in policy.retry_statuses
+                    or not policy.permits(normalized_method, idempotency_key=idempotency_key)
+                ):
+                    raise
+                await asyncio.sleep(policy.delay(attempt, retry_after=exc.retry_after))
+                continue
+            except httpx.HTTPError as exc:
+                wrapped = ForgeTransportError(str(exc))
+                _notify(
+                    self.observer,
+                    RequestAttempt(normalized_method, normalized_path, attempt, time.monotonic() - started, None, None, str(wrapped)),
+                )
+                policy = self.retry_policy
+                if (
+                    policy is None
+                    or attempt >= policy.max_attempts
+                    or not policy.permits(normalized_method, idempotency_key=idempotency_key)
+                ):
+                    raise wrapped from exc
+                await asyncio.sleep(policy.delay(attempt))
+                continue
+            _notify(
+                self.observer,
+                RequestAttempt(
+                    normalized_method,
+                    normalized_path,
+                    attempt,
+                    time.monotonic() - started,
+                    result.status_code,
+                    result.request_id,
+                    None,
+                ),
+            )
+            return result
 
     async def health(self) -> ForgeResponse[JsonObject]:
         return await self.request("GET", "health")

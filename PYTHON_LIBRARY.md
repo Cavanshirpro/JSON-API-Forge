@@ -27,6 +27,51 @@ async with AsyncForgeClient("https://forge.example.com", api_key="...") as forge
 
 The sync and async clients support health/metadata, CRUD and operations plus the general `request` method. Nested resource paths such as `gaming/leaderboard` are supported. URL-safe item IDs and project/path segments are percent encoded; slash, backslash, traversal and control characters are rejected as ambiguous routing input.
 
+## Large systems
+
+`ForgeCluster` and `AsyncForgeCluster` route across multiple Forge deployments, support deterministic rendezvous routing, bounded failover circuit breakers, per-endpoint health inspection and order-preserving bulk work. Retries are opt-in through `RetryPolicy`; POST requests are never retried unless an idempotency key is supplied.
+
+```python
+from json_api_forge import ForgeCluster, ForgeEndpoint, RetryPolicy, RoutingStrategy
+
+endpoints = [
+    ForgeEndpoint("eu-1", "https://eu-1.forge.example", api_key="..."),
+    ForgeEndpoint("eu-2", "https://eu-2.forge.example", api_key="..."),
+]
+
+with ForgeCluster(endpoints, strategy=RoutingStrategy.RENDEZVOUS) as cluster:
+    result = cluster.call_operation(
+        "billing",
+        "invoices.issue",
+        {"customer_id": "cust-7"},
+        routing_key="tenant-42",
+        idempotency_key="invoice-job-731",
+    )
+```
+
+The base clients also provide bounded pagination through `iter_items`, request-attempt observers for metrics/tracing, and retry policies with capped exponential backoff.
+
+## YoungLion and DDM extras
+
+The canonical YoungLion 0.1.x package is optional:
+
+```bash
+python -m pip install "json-api-forge[younglion]"
+# or the narrower intent alias:
+python -m pip install "json-api-forge[ddm]"
+```
+
+Both extras install YoungLion 0.1.x. `YoungLionForgeClient` and `DDMForgeClient` accept DDM payloads, serialize them without duplicating the integration dependency in the core wheel, and convert Forge responses back into DDM objects.
+
+```python
+from YoungLion import DDM
+from json_api_forge.integrations import YoungLionForgeClient
+
+with YoungLionForgeClient.connect("https://forge.example.com", api_key="...") as forge:
+    created = forge.create_item("accounts", "profiles", DDM({"name": "Ada"}))
+    print(created.data.to_dict())
+```
+
 ## Security defaults
 
 - HTTPS is required. `allow_insecure_http=True` permits HTTP only for a loopback server.

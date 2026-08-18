@@ -647,7 +647,7 @@ void MainWindow::createProject()
         return;
     }
     QDir().mkpath(QDir(target).filePath(QStringLiteral("hooks")));
-    const QJsonObject manifest{{QStringLiteral("$schema"), QStringLiteral("../../schemas/project.schema.json")},
+    const QJsonObject manifest{{QStringLiteral("$schema"), QStringLiteral("../../schemas/manifest.schema.json")},
                                {QStringLiteral("slug"), slug},
                                {QStringLiteral("name"), name},
                                {QStringLiteral("version"), QStringLiteral("1.0.0")},

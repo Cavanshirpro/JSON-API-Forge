@@ -2,6 +2,8 @@
 
 <p align="center"><img src="assets/branding/JSON-API-FORGE_logo.png" width="240" alt="JSON API Forge logo"></p>
 
+> This is the `python-library` branch: it contains the hardened runtime plus the typed `json_api_forge` sync/async client. For the runtime-only canonical tree use `main`; for desktop tooling use `Editor`.
+
 **Config-first. Self-hosted. Multi-project. FastAPI-native.**
 
 JSON API Forge turns strict, numbered JSON configuration into a real asynchronous backend: CRUD resources, transactional SQL/RPC operations, MongoDB resources, cache, rate limiting, media, data sources, realtime channels, authentication, OpenAPI and operational endpoints. Python hooks remain the explicit escape hatch for business logic that should not be forced into configuration.
@@ -59,6 +61,23 @@ forge dev
 ```
 
 The generated project documentation is available at `/api/my-service/v1/_docs` once the server is running. See [`INSTALL.md`](INSTALL.md) for editable, Git-ref and Docker installation paths.
+
+## Python library client
+
+```python
+from json_api_forge import ForgeClient
+
+with ForgeClient("https://api.example.com", api_key="...") as forge:
+    notes = forge.list_items("my-service", "notes", params={"limit": 25})
+    created = forge.create_item(
+        "my-service",
+        "notes",
+        {"name": "ship v0.4.2"},
+        idempotency_key="command-0192",
+    )
+```
+
+Use `AsyncForgeClient` with `async with` for asyncio applications. Both clients reject cross-host paths, disable environment proxy inheritance, do not follow redirects, bound response bodies and expose request ID/cache/idempotent-replay metadata. See [`PYTHON_LIBRARY.md`](PYTHON_LIBRARY.md).
 
 ## Core model
 

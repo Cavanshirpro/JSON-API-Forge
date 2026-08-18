@@ -1,0 +1,152 @@
+name: Python library build
+
+on:
+  push:
+    branches: [python-library]
+  pull_request:
+    branches: [python-library]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: python-library-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preflight:
+    name: Version, lint and source preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Verify synchronized versions and branch contract
+        run: |
+          python - <<'PY'
+          import pathlib, tomllib
+          root = pathlib.Path.cwd()
+          package = tomllib.loads((root / "pyproject.toml").read_text())["project"]["version"]
+          scope = {}
+          exec((root / "json_api_forge/_version.py").read_text(), scope)
+          versions = {package, (root / "VERSION").read_text().strip(), scope["__version__"]}
+          if versions != {"0.4.2"}:
+              raise SystemExit(f"version mismatch: {sorted(versions)}")
+          if not (root / "json_api_forge/py.typed").is_file():
+              raise SystemExit("py.typed is missing")
+          PY
+      - name: Install development dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]"
+      - name: Lint, format, compile and manifest
+        run: |
+          ruff format --check framework json_api_forge tests scripts forge.py main.py run.py passenger_wsgi.py
+          ruff check framework json_api_forge tests scripts forge.py main.py run.py passenger_wsgi.py
+          python -m compileall -q framework json_api_forge tests
+          python scripts/check_manifest.py
+          python -m pip check
+
+  test:
+    name: ${{ matrix.os }} / Python ${{ matrix.python }}
+    needs: preflight
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-latest, python: "3.11"}
+          - {os: ubuntu-latest, python: "3.12"}
+          - {os: ubuntu-latest, python: "3.13"}
+          - {os: ubuntu-latest, python: "3.14"}
+          - {os: windows-latest, python: "3.11"}
+          - {os: windows-latest, python: "3.13"}
+          - {os: windows-latest, python: "3.14"}
+          - {os: macos-14, python: "3.11"}
+          - {os: macos-14, python: "3.13"}
+          - {os: macos-14, python: "3.14"}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - name: Install package from source
+        run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]"
+      - name: Test runtime and public library
+        run: python -m pytest -q
+      - name: Verify dependency graph
+        run: python -m pip check
+
+  coverage:
+    name: Coverage and critical modules
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]"
+      - run: |
+          pytest --cov=framework --cov=json_api_forge --cov-report=term-missing --cov-report=json:coverage.json -q
+          python scripts/check_critical_coverage.py coverage.json
+
+  artifacts:
+    name: Reproducible wheel, sdist and bundle
+    needs: [test, coverage]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Build and inspect distributions
+        run: |
+          python -m pip install --upgrade pip build twine
+          python -m build
+          python -m twine check dist/*
+          python - <<'PY'
+          import pathlib, zipfile
+          wheel = next(pathlib.Path("dist").glob("*.whl"))
+          if not wheel.name.endswith("-py3-none-any.whl"):
+              raise SystemExit(f"wheel is not universal: {wheel.name}")
+          with zipfile.ZipFile(wheel) as archive:
+              names = set(archive.namelist())
+          required = {"json_api_forge/__init__.py", "json_api_forge/client.py", "json_api_forge/py.typed"}
+          missing = required - names
+          if missing:
+              raise SystemExit(f"wheel missing files: {sorted(missing)}")
+          PY
+      - name: Install wheel outside the checkout
+        run: |
+          python -m venv "${{ runner.temp }}/forge-wheel"
+          "${{ runner.temp }}/forge-wheel/bin/python" -m pip install dist/*.whl
+          cd "${{ runner.temp }}"
+          "${{ runner.temp }}/forge-wheel/bin/python" -c "import json_api_forge; assert json_api_forge.__version__ == '0.4.2'"
+          "${{ runner.temp }}/forge-wheel/bin/forge" --help
+      - name: Assemble one downloadable release bundle
+        run: |
+          mkdir -p release/python-library
+          cp dist/* release/python-library/
+          git archive --format=zip --prefix=JSON-API-Forge-python-library-v0.4.2/ -o release/python-library/JSON-API-Forge-python-library-v0.4.2-source.zip HEAD
+          cd release/python-library
+          sha256sum * > SHA256SUMS
+          cd ..
+          zip -r JSON-API-Forge-python-library-v0.4.2-bundle.zip python-library
+          sha256sum JSON-API-Forge-python-library-v0.4.2-bundle.zip > JSON-API-Forge-python-library-v0.4.2-bundle.zip.sha256
+      - uses: actions/upload-artifact@v7
+        with:
+          name: JSON-API-Forge-python-library-v0.4.2
+          path: |
+            release/JSON-API-Forge-python-library-v0.4.2-bundle.zip
+            release/JSON-API-Forge-python-library-v0.4.2-bundle.zip.sha256
+          if-no-files-found: error
+          retention-days: 30

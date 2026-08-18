@@ -5,13 +5,13 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "json-api-forge"
 version = "0.4.2"
-description = "Config-first, self-hosted, multi-project FastAPI backend runtime"
+description = "Config-first FastAPI runtime and typed sync/async JSON API Forge client"
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{name = "Cavanşir Qurbanzadə"}]
 license = "LicenseRef-JAF-SASH-1.1"
 license-files = ["LICENSE", "LICENSE-FAQ.md", "NOTICE.md"]
-keywords = ["fastapi", "backend", "api", "declarative", "self-hosted", "json", "postgresql"]
+keywords = ["fastapi", "backend", "api", "declarative", "self-hosted", "json", "client", "sdk", "postgresql"]
 classifiers = [
   "Development Status :: 3 - Alpha", "Framework :: FastAPI", "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.11", "Programming Language :: Python :: 3.12",
@@ -41,7 +41,10 @@ Repository = "https://github.com/Cavanshirpro/JSON-API-Forge"
 Issues = "https://github.com/Cavanshirpro/JSON-API-Forge/issues"
 
 [tool.setuptools.packages.find]
-include = ["framework*"]
+include = ["framework*", "json_api_forge*"]
+
+[tool.setuptools.package-data]
+json_api_forge = ["py.typed"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
@@ -50,7 +53,7 @@ asyncio_mode = "auto"
 
 [tool.coverage.run]
 branch = true
-source = ["framework"]
+source = ["framework", "json_api_forge"]
 
 [tool.coverage.report]
 show_missing = true

@@ -19,6 +19,7 @@ from .config import DataSourceConfig, OperationConfig, ProjectConfig, ResourceCo
 from .doctor import ensure_no_errors
 from .domain import expand_feature_packs
 from .editor_api import EDITOR_PREFIX, register_editor_api
+from .editor_identity import init_editor_identity
 from .observability import metrics_payload, observe
 from .protection import RequestBodyLimitMiddleware, client_ip, host_allowed, ip_allowed, request_is_https
 from .routers import register_project_routes
@@ -148,6 +149,8 @@ def create_app(*, apps_dir: Path | str | None = None) -> FastAPI:
         try:
             app.state.internal_engine = create_async_engine(internal_url, **_internal_engine_kwargs(internal_url))
             await init_security(app.state.internal_engine, mode=settings.internal_schema_mode)
+            if settings.editor_api_enabled:
+                await init_editor_identity(app.state.internal_engine, mode=settings.internal_schema_mode)
             app.state.audit_writer = AuditWriter(app.state.internal_engine)
             await app.state.audit_writer.start()
             await runtime_manager.start()
@@ -184,6 +187,8 @@ def create_app(*, apps_dir: Path | str | None = None) -> FastAPI:
 
     def body_limit_for_path(path: str) -> int | None:
         if path == EDITOR_PREFIX or path.startswith(EDITOR_PREFIX + "/"):
+            if "/attachments" in path:
+                return settings.editor_max_attachment_bytes + 1024 * 1024
             return settings.editor_max_document_bytes
         return runtime_manager.body_limit_for_path(path)
 
@@ -284,7 +289,10 @@ def create_app(*, apps_dir: Path | str | None = None) -> FastAPI:
                 response.headers["X-Content-Type-Options"] = "nosniff"
                 response.headers["X-Frame-Options"] = "DENY"
                 response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-                response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+                response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+                if request.url.path == EDITOR_PREFIX or request.url.path.startswith(EDITOR_PREFIX + "/"):
+                    response.headers.setdefault("Cache-Control", "no-store")
+                    response.headers.setdefault("Cross-Origin-Resource-Policy", "same-origin")
                 cache_status = getattr(request.state, "forge_cache", None)
                 if cache_status:
                     response.headers["X-Forge-Cache"] = str(cache_status)
@@ -411,5 +419,5 @@ def create_app(*, apps_dir: Path | str | None = None) -> FastAPI:
             hidden_route=_hidden_route,
             invoke_hook=_invoke_hook,
         )
-    register_editor_api(app, apps_dir=resolved_apps_dir, settings=settings)
+    register_editor_api(app, apps_dir=resolved_apps_dir, settings=settings, runtimes=runtimes)
     return app

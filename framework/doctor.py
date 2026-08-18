@@ -407,6 +407,43 @@ def project_diagnostics(project: ProjectConfig, *, production: bool = False) -> 
 
 def forge_diagnostics(forge: ForgeConfig, *, production: bool = False) -> list[Diagnostic]:
     diagnostics = []
+    if settings.editor_api_enabled:
+        if settings.editor_setup_enabled and is_weak_secret(settings.editor_token, minimum_length=32):
+            diagnostics.append(
+                Diagnostic("error", "weak-editor-setup-token", "Editor control plane requires a strong, independent EDITOR_TOKEN")
+            )
+        if not settings.editor_setup_enabled and settings.editor_token:
+            diagnostics.append(
+                Diagnostic(
+                    "warning",
+                    "editor-disabled-setup-token-present",
+                    "Founder setup is disabled but EDITOR_TOKEN is still present; remove the unused secret",
+                )
+            )
+        if not settings.editor_allowed_ips:
+            diagnostics.append(
+                Diagnostic(
+                    "warning",
+                    "editor-ip-policy-open",
+                    "EDITOR_ALLOWED_IPS is empty; restrict the control plane at both the application and firewall/VPN layers",
+                )
+            )
+        if "*" in {item.strip() for item in settings.editor_trusted_hosts.split(",")}:
+            diagnostics.append(Diagnostic("warning", "editor-host-policy-open", "EDITOR_TRUSTED_HOSTS contains '*'"))
+        if settings.editor_allow_hooks:
+            diagnostics.append(
+                Diagnostic(
+                    "warning",
+                    "editor-remote-code-editing",
+                    "Remote Python hook editing is enabled; grant documents.hooks.write only to fully trusted operators",
+                )
+            )
+        if production and not settings.editor_require_https:
+            diagnostics.append(Diagnostic("error", "editor-https-disabled", "Production Editor control plane requires HTTPS"))
+        if production and settings.editor_legacy_token_enabled:
+            diagnostics.append(
+                Diagnostic("error", "editor-legacy-token", "Production Editor control plane cannot use the shared legacy token mode")
+            )
     for project in forge.projects:
         diagnostics.extend(project_diagnostics(project, production=production))
     return diagnostics

@@ -257,7 +257,11 @@ def _replace_env_secrets(text: str, values: dict[str, str]) -> str:
 def cmd_init(args: argparse.Namespace) -> None:
     root = _root(args)
     target = root / ".env"
-    names = sorted(_required_secret_envs(root) | ({"OPERATOR_TOKEN"} if args.production else set()))
+    managed = {"OPERATOR_TOKEN"} if args.production else set()
+    editor_enabled = bool(getattr(args, "editor", False))
+    if editor_enabled:
+        managed.add("EDITOR_TOKEN")
+    names = sorted(_required_secret_envs(root) | managed)
     generated = {name: _secret() for name in names}
     existed = target.exists()
     if existed:
@@ -272,6 +276,7 @@ def cmd_init(args: argparse.Namespace) -> None:
             "INTERNAL_DATABASE_URL=sqlite+aiosqlite:///./data/internal-v4.db\n",
             "REDIS_URL=\n",
             "LOG_LEVEL=INFO\n",
+            f"EDITOR_API_ENABLED={'true' if editor_enabled else 'false'}\n",
             "\n",
         ]
         content = "".join(baseline) + "".join(f"{name}={generated[name]}\n" for name in names)
@@ -323,6 +328,7 @@ def cmd_migrate(args: argparse.Namespace) -> None:
     from sqlalchemy.ext.asyncio import create_async_engine
 
     from .db import build_registry
+    from .editor_identity import init_editor_identity
     from .security import init_security
 
     root = _root(args)
@@ -343,6 +349,7 @@ def cmd_migrate(args: argparse.Namespace) -> None:
         internal = create_async_engine(internal_url, **internal_kwargs)
         try:
             await init_security(internal, mode="create")
+            await init_editor_identity(internal, mode="create")
         finally:
             await internal.dispose()
 
@@ -400,6 +407,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("init", help="Create a local .env with cryptographically random secrets")
     p.add_argument("--production", action="store_true")
+    p.add_argument("--editor", action="store_true", help="Enable the account-based Editor control plane and generate its setup token")
     p.add_argument("--force", action="store_true")
     p.set_defaults(func=cmd_init)
 

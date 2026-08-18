@@ -8,7 +8,7 @@
 
 JSON API Forge turns strict, numbered JSON configuration into a real asynchronous backend: CRUD resources, transactional SQL/RPC operations, MongoDB resources, cache, rate limiting, media, data sources, realtime channels, authentication, OpenAPI and operational endpoints. Python hooks remain the explicit escape hatch for business logic that should not be forced into configuration.
 
-> **v0.5.0 is the visual-authoring and integration release.** It adds policy-gated graph documents for the dedicated Qt Editor, a hardened enterprise Python SDK line, Forge-backed plugin catalog contracts and 25 copy-ready systems on `exampleApps`. The project remains **Alpha**.
+> **v0.5.0 is the visual-authoring, secure remote-team and integration release.** It adds account-based Editor access, scoped roles, profiles, project spaces, chat, notes, WebRTC calls, a read-only database browser, policy-gated graph documents, a hardened Python SDK line, Forge-backed plugin catalog contracts and 25 copy-ready systems on `exampleApps`. The project remains **Alpha**.
 
 ## Why JSON API Forge exists
 
@@ -38,7 +38,8 @@ Fragments are merged alphabetically and then validated by strict Pydantic models
 ## v0.5.0 ecosystem
 
 - `main` stays example-free and now validates bounded, schema-versioned, acyclic Editor graph documents behind the separate `EDITOR_ALLOW_GRAPHS` policy.
-- The `Editor` branch adds a C++20/Qt 6 node-and-wire graph, code/typed visual modes, eight atomic templates, Python SDK integration and a digest-verified Plugin API v2.
+- The control plane uses one-time founder setup, hashed worker credentials, expiring sessions, ranked/scoped roles, project/document/database policy and append-only audit records; the shared-token mode is development-only compatibility.
+- The `Editor` branch adds a C++20/Qt 6 node-and-wire graph, code/typed visual modes, account/team/database workspaces, Amber Gold + Graphite Gray branding, eight atomic templates, Python SDK integration and a digest-verified Plugin API v2.
 - The Editor can browse plugin release records from a normal Forge resource; it validates metadata and never silently installs or executes catalog code.
 - The `python-library` branch adds sync/async retry observability, bounded pagination/bulk work, multi-region routing, circuit breakers and safe failover. Optional `[younglion]` and `[ddm]` extras keep those integrations lazy.
 - The `exampleApps` branch contains 25 named applications with schema, CRUD, RPC, idempotency, realtime and graph smoke coverage.
@@ -59,6 +60,8 @@ forge validate
 forge doctor
 forge dev
 ```
+
+After release assets are attached to GitHub Releases, install a checksum-verified, platform-matched standalone build with `./scripts/install.sh --release` or `.\scripts\install.ps1 -Release`. The build workflow produces glibc/musl Linux, Windows, macOS, OCI, wheel/source and cPanel/Passenger artifacts for x64/ARM64 where the platform supports them.
 
 The generated project documentation is available at `/api/my-service/v1/_docs` once the server is running. See [`INSTALL.md`](INSTALL.md) for editable, Git-ref and Docker installation paths.
 
@@ -106,7 +109,7 @@ Forge implements a local-filesystem media backend with upload limits, MIME/exten
 
 ### Dedicated editor control plane
 
-The `Editor` branch contains the C++/Qt desktop editor. A server only exposes its management surface when `EDITOR_API_ENABLED=true`. The editor uses `X-Forge-Editor-Token`, not application API keys, and the server independently enforces HTTPS, source IP ranges, project allowlists, read-only mode, project creation, Python-hook editing and graph editing. See [`docs/42-Editor-Control-Plane.md`](docs/42-Editor-Control-Plane.md).
+The `Editor` branch contains the C++/Qt desktop editor. A server only exposes its management surface when `EDITOR_API_ENABLED=true`. `EDITOR_TOKEN` is accepted only once to create the founder account; workers then use invitation-scoped accounts and short-lived bearer sessions, never application API keys. The server independently enforces HTTPS, source IP and Host allowlists, role rank, project/document/database scopes, read-only mode, project creation, Python-hook editing and graph editing. See [`docs/42-Editor-Control-Plane.md`](docs/42-Editor-Control-Plane.md).
 
 ## CLI
 
@@ -150,6 +153,8 @@ Start with [`docs/00-Start-Here.md`](docs/00-Start-Here.md). The documentation t
 ## Deployment
 
 Native ASGI/Uvicorn is the preferred runtime, especially for SSE/WebSockets. Docker is supported through the included `Dockerfile`. A Passenger/a2wsgi bridge is included for conventional cPanel-style HTTP deployments, but it is not the preferred environment for sustained realtime workloads.
+
+See [`docs/43-Platform-and-Hosting-Matrix.md`](docs/43-Platform-and-Hosting-Matrix.md) for Windows/Windows Server, mainstream and specialist Linux distributions, Alpine/musl, macOS, containers, cPanel/Passenger and reverse-proxy deployment paths.
 
 ## Known limits
 

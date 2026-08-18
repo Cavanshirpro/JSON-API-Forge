@@ -42,8 +42,10 @@ def _editor_settings(**values) -> Settings:
         _env_file=None,
         editor_api_enabled=True,
         editor_token=EDITOR_TOKEN,
+        editor_legacy_token_enabled=True,
         editor_require_https=False,
         editor_allowed_ips="",
+        editor_trusted_hosts="testserver,localhost",
     )
     defaults.update(values)
     return Settings(**defaults)

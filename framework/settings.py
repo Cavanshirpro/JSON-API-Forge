@@ -20,16 +20,40 @@ class Settings(BaseSettings):
     # has an independent credential and network policy from application API
     # keys so an editor token cannot be used as an application credential.
     editor_api_enabled: bool = False
+    # EDITOR_TOKEN is the one-time founder setup secret. Disable setup and
+    # remove it from the environment after the founder account is created.
     editor_token: str = ""
+    editor_setup_enabled: bool = True
+    editor_legacy_token_enabled: bool = False
     editor_require_https: bool = True
     editor_allowed_ips: str = "127.0.0.1/32,::1/128"
     editor_trusted_proxy_cidrs: str = ""
+    editor_trusted_hosts: str = "localhost,127.0.0.1,[::1]"
     editor_read_only: bool = False
     editor_allow_create_projects: bool = False
     editor_allow_hooks: bool = False
     editor_allow_graphs: bool = False
     editor_allowed_projects: str = ""
     editor_max_document_bytes: int = Field(default=2 * 1024 * 1024, ge=1024, le=16 * 1024 * 1024)
+    editor_session_ttl_seconds: int = Field(default=12 * 60 * 60, ge=300, le=7 * 24 * 60 * 60)
+    editor_session_idle_seconds: int = Field(default=60 * 60, ge=60, le=24 * 60 * 60)
+    editor_session_bind_user_agent: bool = True
+    editor_password_min_length: int = Field(default=12, ge=12, le=64)
+    editor_login_max_attempts: int = Field(default=5, ge=3, le=20)
+    editor_login_window_seconds: int = Field(default=5 * 60, ge=60, le=60 * 60)
+    editor_login_lock_seconds: int = Field(default=15 * 60, ge=60, le=24 * 60 * 60)
+    editor_collaboration_enabled: bool = True
+    editor_calls_enabled: bool = True
+    editor_call_ticket_ttl_seconds: int = Field(default=60, ge=15, le=300)
+    editor_call_signal_ttl_seconds: int = Field(default=5 * 60, ge=60, le=60 * 60)
+    editor_call_ice_servers_json: str = '[{"urls":"stun:stun.cloudflare.com:3478"}]'
+    editor_database_browser_enabled: bool = True
+    editor_database_expose_undeclared: bool = False
+    editor_database_row_limit: int = Field(default=100, ge=1, le=500)
+    editor_max_message_chars: int = Field(default=8_000, ge=256, le=64_000)
+    editor_max_note_chars: int = Field(default=128_000, ge=1_024, le=1_000_000)
+    editor_attachment_dir: Path = Path("data/editor-attachments")
+    editor_max_attachment_bytes: int = Field(default=25 * 1024 * 1024, ge=1024, le=250 * 1024 * 1024)
 
     internal_database_url: str = "sqlite+aiosqlite:///./data/internal-v4.db"
     internal_pool_pre_ping: bool = True

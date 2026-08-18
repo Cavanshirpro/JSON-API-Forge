@@ -1,33 +1,88 @@
-# Editor control plane
+# Editor control plane and team workspace
 
-The desktop editor uses a separate management surface at `/__forge/editor/v1`. It is absent unless `EDITOR_API_ENABLED=true`. Application API keys, bootstrap keys, JWTs and the operator token cannot authenticate this surface; only `X-Forge-Editor-Token` is accepted.
+The Qt Editor connects to the separately protected management surface at `/__forge/editor/v1`. The surface is absent unless `EDITOR_API_ENABLED=true`. Application API keys, project bootstrap keys, JWTs and `OPERATOR_TOKEN` cannot authenticate it.
 
-## Server policy
+## Secure first-time setup
+
+```bash
+forge init --editor --production
+forge migrate
+```
+
+`EDITOR_TOKEN` is a one-time founder-setup secret. The founder creates an account through `POST /setup/founder`; after that transaction commits, the same setup secret cannot create another founder. Immediately set `EDITOR_SETUP_ENABLED=false`, remove `EDITOR_TOKEN` from the process environment and restart. Worker access uses short-lived `Authorization: Bearer jfe_session_…` sessions. Session tokens are stored only as SHA-256 hashes, have absolute and idle expiry, are bound to the client user-agent by default, and are revoked when a member is disabled. The desktop Editor keeps the session in memory and never writes a password or session token to its settings file.
+
+The pre-v0.5 shared `X-Forge-Editor-Token` behavior exists only behind `EDITOR_LEGACY_TOKEN_ENABLED=true` for local migration tests. It is rejected when `APP_ENV=production`.
+
+At minimum, configure:
 
 ```dotenv
 EDITOR_API_ENABLED=true
-EDITOR_TOKEN=<a separately generated 32+ character secret>
+EDITOR_TOKEN=<random one-time setup secret, 32+ characters>
+EDITOR_SETUP_ENABLED=true
 EDITOR_REQUIRE_HTTPS=true
 EDITOR_ALLOWED_IPS=10.20.0.0/16,2001:db8:1234::/48
 EDITOR_TRUSTED_PROXY_CIDRS=10.0.0.0/8
-EDITOR_READ_ONLY=false
+EDITOR_TRUSTED_HOSTS=forge-admin.example.com
+EDITOR_LEGACY_TOKEN_ENABLED=false
 EDITOR_ALLOW_CREATE_PROJECTS=false
 EDITOR_ALLOW_HOOKS=false
-EDITOR_ALLOW_GRAPHS=false
+EDITOR_ALLOW_GRAPHS=true
 EDITOR_ALLOWED_PROJECTS=Billing API,Internal Portal
-EDITOR_MAX_DOCUMENT_BYTES=2097152
+EDITOR_CALL_ICE_SERVERS_JSON=[{"urls":"turns:turn.example.com:5349","username":"short-lived-user","credential":"short-lived-secret"}]
 ```
 
-Forwarded protocol/IP headers are used only when the direct peer belongs to `EDITOR_TRUSTED_PROXY_CIDRS`. In production the process refuses to expose the API without HTTPS policy or with a weak/missing editor token.
+Forwarded protocol and client-IP headers are honored only when the direct peer belongs to `EDITOR_TRUSTED_PROXY_CIDRS`. The Host header must match `EDITOR_TRUSTED_HOSTS`. The default IP and Host policies allow loopback only. Production startup refuses a weak secret while setup is enabled, disabled HTTPS policy, or legacy shared-token mode. Once setup is disabled, `forge doctor` warns if the now-unused setup secret is still present.
 
-## File boundary
+## Ranks, roles and founder restrictions
 
-The default writable set is `app.json` plus direct `config/*.json` fragments. Python `hooks/*.py` and Blueprint-style `graphs/*.forgegraph.json` each require their own explicit policy. Graph documents are bounded, schema-versioned editor metadata: node/edge identity, target paths, fan-in and acyclic execution constraints are validated server-side, and a graph never bypasses normal merged-project validation for the JSON it generates. `.env`, secrets, arbitrary source files, symlinks and traversal paths are never editor documents.
+The support schema seeds immutable `Founder`, `Administrator`, `Developer`, `Analyst`, `Collaborator` and `Viewer` roles. The founder can create lower custom roles with:
 
-Reads return a SHA-256 revision. Writes must send that revision (or `new` for a new allowed document). A stale revision returns HTTP 409. JSON edits are staged into a private project copy and the complete merged configuration is validated before an atomic replacement; invalid edits return HTTP 422 without changing the live file.
+- an integer rank;
+- explicit permissions;
+- document allow/deny globs;
+- database alias/table allow globs;
+- global or project-specific memberships.
 
-Project creation, hook editing, project allowlists and read-only mode are server-enforced capabilities. The Qt client discovers them from `/capabilities` and disables unsupported controls rather than assuming authority.
+A role manager cannot create a role at or above their own rank, grant a permission they do not hold, or widen their own document/database scope. The founder account cannot be disabled, deleted or reassigned through the remote API. New workers receive single-use, expiring invitation tokens and choose their own passwords; an administrator never needs to know a worker password.
 
-## Recommended deployment
+Every project, document and database request resolves access again from current memberships. A UI control being disabled is never treated as authorization. `hooks/*.py` additionally requires both the server-wide `EDITOR_ALLOW_HOOKS=true` policy and `documents.hooks.write`; graph writes similarly require the graph policy and permission.
 
-Expose this prefix only on a private administration hostname/VPN, terminate TLS at a trusted reverse proxy, restrict source networks at the firewall as well as the application policy, rotate the editor token separately, and keep `EDITOR_ALLOW_HOOKS=false` unless remote Python code editing is explicitly required. Run a single management worker or use editor-side conflict handling; SHA revisions prevent silent overwrites across workers but do not provide distributed locking.
+## Database explorer
+
+The Editor database browser does not accept SQL. It exposes metadata and bounded, read-only `SELECT` pagination for declared Forge resources. Resource `hidden_fields` are never returned and `readable_fields` remains authoritative. Support/undeclared tables stay invisible unless `EDITOR_DATABASE_EXPOSE_UNDECLARED=true` **and** the role has `databases.undeclared.read`. Responses cap row counts, offsets, cell sizes, nested JSON depth and binary previews.
+
+## Team profiles, areas, notes and files
+
+Authenticated members have server-side profiles and can use:
+
+- open project areas visible to every authorized project member;
+- restricted areas gated by rank and/or role;
+- bounded messages and announcements;
+- open, restricted or private notes;
+- attachment uploads stored outside application configuration with random storage names and SHA-256 metadata;
+- an Editor audit stream for sensitive management actions.
+
+Attachments are always downloaded with attachment disposition and `nosniff`. The configured attachment root may not be a symlink. Do not place it under a public web root.
+
+## Voice and video
+
+Calls use a self-contained WebRTC client. Media is DTLS-SRTP peer-to-peer; Forge stores no audio or video. The server provides only short-lived, single-use call tickets and bounded SDP/ICE signaling. Tickets are passed in the URL fragment, which is not sent with the HTTP page request, and the page immediately removes the fragment from browser history. A nonce-based Content Security Policy and a call-only camera/microphone Permissions Policy protect the client.
+
+Call signaling is database-backed so participants connected to different application workers can exchange signals. `EDITOR_CALL_ICE_SERVERS_JSON` accepts only a bounded list of `stun:`, `turn:` and `turns:` URLs with optional string credentials. For reliable internet calls, deploy an organization-controlled TURN service, prefer short-lived credentials, and keep the management hostname on HTTPS/WSS. Passenger/WSGI hosting cannot provide WebSockets; calls require a native ASGI process or a separate ASGI management deployment.
+
+## Concurrent and hostile edits
+
+Documents are limited to `app.json`, direct `config/*.json`, separately enabled `graphs/*.forgegraph.json`, and separately enabled `hooks/*.py`. `.env`, secrets, arbitrary source paths, traversal segments and symlinks are rejected. A save must provide the exact current SHA-256 revision. The server then:
+
+1. takes an in-process lock and a cross-process file lock;
+2. rejects symlinked control directories/documents;
+3. copies only allowlisted control files into a staging directory;
+4. validates the complete staged project;
+5. writes and `fsync`s a temporary file;
+6. atomically replaces the live document and `fsync`s its directory.
+
+Invalid JSON or project configuration never overwrites the live document. File locks cover workers sharing one filesystem; clustered hosts still need shared configuration storage or a single designated management writer.
+
+## Deployment boundary
+
+Expose the prefix on a private administration hostname or VPN, terminate TLS at a trusted reverse proxy, keep the application IP allowlist **and** an edge firewall policy, and run `forge doctor --production`. Never publish the management prefix directly to the internet with an empty IP policy. Keep remote hook editing off unless every holder of that permission is trusted to execute code as the Forge process account.

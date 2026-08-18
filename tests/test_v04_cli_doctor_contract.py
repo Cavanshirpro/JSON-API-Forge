@@ -34,7 +34,8 @@ def test_cli_new_init_force_preserves_user_env_and_generates_schema(tmp_path, mo
     with pytest.raises(SystemExit, match="Refusing to overwrite"):
         cmd_init(_args(tmp_path, production=False, force=False))
     cmd_schema(_args(tmp_path))
-    assert (tmp_path / "schemas" / "project.schema.json").exists() and (tmp_path / "schemas" / "fragment.schema.json").exists()
+    assert all((tmp_path / "schemas" / name).exists() for name in ("project.schema.json", "manifest.schema.json", "fragment.schema.json"))
+    assert json.loads((project / "app.json").read_text())["$schema"] == "../../schemas/manifest.schema.json"
 
 
 def test_doctor_production_surfaces_operational_risks_and_route_shadow(monkeypatch):

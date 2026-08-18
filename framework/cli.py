@@ -186,7 +186,7 @@ def cmd_new(args: argparse.Namespace) -> None:
     (target / "hooks").mkdir()
     (target / "data").mkdir()
     manifest = {
-        "$schema": "../../schemas/project.schema.json",
+        "$schema": "../../schemas/manifest.schema.json",
         "slug": slug,
         "name": name,
         "version": "1.0.0",
@@ -200,7 +200,7 @@ def cmd_new(args: argparse.Namespace) -> None:
         (target / "config" / filename).write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
     (target / "hooks" / "__init__.py").write_text("", encoding="utf-8")
     schema_dir = root / "schemas"
-    if not (schema_dir / "project.schema.json").exists() or not (schema_dir / "fragment.schema.json").exists():
+    if not all((schema_dir / name).exists() for name in ("project.schema.json", "manifest.schema.json", "fragment.schema.json")):
         from .schema import write_schemas
 
         write_schemas(schema_dir)

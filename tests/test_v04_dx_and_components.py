@@ -8,6 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException, UploadFile
+from jsonschema import Draft202012Validator
 from starlette.datastructures import Headers
 from starlette.requests import Request
 
@@ -74,6 +75,11 @@ def test_cli_init_new_schema_and_no_default_secrets(tmp_path, capsys):
         json.loads((tmp_path / "app/Bot/config/20-security.json").read_text())["security"]["bootstrap_admin_key"]
         == "$env:BOT_BOOTSTRAP_ADMIN_KEY"
     )
+    manifest_schema = json.loads((tmp_path / "schemas/manifest.schema.json").read_text())
+    fragment_schema = json.loads((tmp_path / "schemas/fragment.schema.json").read_text())
+    Draft202012Validator(manifest_schema).validate(json.loads((tmp_path / "app/Bot/app.json").read_text()))
+    for fragment in (tmp_path / "app/Bot/config").glob("*.json"):
+        Draft202012Validator(fragment_schema).validate(json.loads(fragment.read_text()))
     cli_main(["--root", str(tmp_path), "init"])
     env = (tmp_path / ".env").read_text()
     assert "BOT_BOOTSTRAP_ADMIN_KEY=" in env and "change-me" not in env.lower()
@@ -81,6 +87,9 @@ def test_cli_init_new_schema_and_no_default_secrets(tmp_path, capsys):
         cli_main(["--root", str(tmp_path), "init"])
     cli_main(["--root", str(tmp_path), "schema"])
     assert json.loads((tmp_path / "schemas/project.schema.json").read_text())["$schema"].startswith("https://json-schema.org")
+    manifest_schema = json.loads((tmp_path / "schemas/manifest.schema.json").read_text())
+    assert "required" not in manifest_schema
+    assert json.loads((tmp_path / "app/Bot/app.json").read_text())["$schema"] == "../../schemas/manifest.schema.json"
 
 
 def test_datasources_file_read_query_and_mutations(tmp_path):

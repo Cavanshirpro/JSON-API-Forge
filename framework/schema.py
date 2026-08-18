@@ -39,10 +39,21 @@ def fragment_schema() -> dict:
     return schema
 
 
+def manifest_schema() -> dict:
+    schema = project_schema()
+    schema["title"] = "JSON API Forge project manifest"
+    schema["description"] = (
+        "Base app/NAME/app.json or manifest.json document. Numbered config fragments provide the remaining fields before strict validation."
+    )
+    schema.pop("required", None)
+    return schema
+
+
 def write_schemas(directory: Path) -> list[Path]:
     directory.mkdir(parents=True, exist_ok=True)
     outputs = {
         directory / "project.schema.json": project_schema(),
+        directory / "manifest.schema.json": manifest_schema(),
         directory / "fragment.schema.json": fragment_schema(),
     }
     for path, value in outputs.items():

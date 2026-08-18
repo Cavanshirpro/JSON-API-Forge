@@ -2,7 +2,7 @@
   "json.schemas": [
     {
       "fileMatch": ["/app/*/app.json", "/app/*/manifest.json"],
-      "url": "./schemas/project.schema.json"
+      "url": "./schemas/manifest.schema.json"
     },
     {
       "fileMatch": ["/app/*/config/*.json"],

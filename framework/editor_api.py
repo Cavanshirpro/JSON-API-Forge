@@ -249,7 +249,7 @@ class EditorControlPlane:
                 (temporary / "app.json").write_text(
                     json.dumps(
                         {
-                            "$schema": "../../schemas/project.schema.json",
+                            "$schema": "../../schemas/manifest.schema.json",
                             "slug": payload.slug,
                             "name": payload.name,
                             "version": "1.0.0",

@@ -21,5 +21,5 @@ A directory containing `app.json` is one project. `config/*.json` files are merg
 ## Recommended reading order
 Read architecture and multi-project configuration next, then security, databases, operations, data sources, media/realtime, CLI/testing, and finally production/failure-mode documents. `docs/README.md` contains the index.
 
-## v0.4.2 note
-`main` intentionally ships with an empty `app/`. Create a project with `forge new`, or copy a named project from the `exampleApps` branch. Only explicit project directories are valid project roots; reserved legacy root folders are ignored. The dedicated Qt editor and its server policy are documented in `42-Editor-Control-Plane.md`.
+## v0.5.0 note
+`main` intentionally ships with an empty `app/`. Create a project with `forge new`, or copy one of the 25 named projects from the `exampleApps` branch. Only explicit project directories are valid project roots; reserved legacy root folders are ignored. The dedicated Qt Editor, versioned graph documents and their server policies are documented in `42-Editor-Control-Plane.md`.

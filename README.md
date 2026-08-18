@@ -1,4 +1,4 @@
-# JSON API Forge v0.4.2
+# JSON API Forge v0.5.0
 
 <p align="center"><img src="assets/branding/JSON-API-FORGE_logo.png" width="240" alt="JSON API Forge logo"></p>
 
@@ -8,7 +8,7 @@
 
 JSON API Forge turns strict, numbered JSON configuration into a real asynchronous backend: CRUD resources, transactional SQL/RPC operations, MongoDB resources, cache, rate limiting, media, data sources, realtime channels, authentication, OpenAPI and operational endpoints. Python hooks remain the explicit escape hatch for business logic that should not be forced into configuration.
 
-> **v0.4.2 is a hardening and tooling release.** It keeps the config-first architecture, removes examples from `main`, closes additional authorization/concurrency edges, and adds a policy-gated control plane for the dedicated Qt editor. The project remains **Alpha**.
+> **v0.5.0 is the visual-authoring and integration release.** It adds policy-gated graph documents for the dedicated Qt Editor, a hardened enterprise Python SDK line, Forge-backed plugin catalog contracts and 25 copy-ready systems on `exampleApps`. The project remains **Alpha**.
 
 ## Why JSON API Forge exists
 
@@ -29,20 +29,20 @@ app/MyService/
 │   ├── 70-economy-rpc.json
 │   └── 80-data-events.json
 ├── data/
+├── graphs/
 └── hooks/
 ```
 
 Fragments are merged alphabetically and then validated by strict Pydantic models. Unknown configuration keys are rejected.
 
-## v0.4.2 hardening
+## v0.5.0 ecosystem
 
-- `main` contains no bundled application or example; `forge new` creates the first project and `exampleApps` contains copy-ready samples.
-- Legacy root `app/config`, `app/hooks`, hidden directories and reserved support directories are ignored during discovery.
-- Project names, slugs, API prefixes and HTTP header names are validated against traversal/control-character ambiguity.
-- Ambient proxy variables are not trusted by outbound data-source or JWKS clients unless code explicitly opts in.
-- Expired API keys are never cached; unknown delegated roles are rejected; child credentials cannot obtain a higher sustained request rate.
-- WebSocket connection caps reserve a slot atomically, closing a concurrent oversubscription race.
-- The remote editor API is disabled by default and has a separate token, TLS/IP/project/hook/read-only policies, optimistic concurrency and validated atomic writes.
+- `main` stays example-free and now validates bounded, schema-versioned, acyclic Editor graph documents behind the separate `EDITOR_ALLOW_GRAPHS` policy.
+- The `Editor` branch adds a C++20/Qt 6 node-and-wire graph, code/typed visual modes, eight atomic templates, Python SDK integration and a digest-verified Plugin API v2.
+- The Editor can browse plugin release records from a normal Forge resource; it validates metadata and never silently installs or executes catalog code.
+- The `python-library` branch adds sync/async retry observability, bounded pagination/bulk work, multi-region routing, circuit breakers and safe failover. Optional `[younglion]` and `[ddm]` extras keep those integrations lazy.
+- The `exampleApps` branch contains 25 named applications with schema, CRUD, RPC, idempotency, realtime and graph smoke coverage.
+- The v0.4.2 discovery, authorization, concurrency, proxy, credential and control-plane hardening remains in force.
 - Python 3.11–3.14, live PostgreSQL 17/Redis 8/MongoDB 8, package, TypeScript, container, manifest and CodeQL gates remain required.
 
 ## Quick start
@@ -93,7 +93,7 @@ Static, JSON/YAML/CSV file and controlled outbound HTTP sources can be exposed d
 SSE and WebSocket event channels can use process-local memory or Redis pub/sub. Delivery is best-effort, not a durable message queue.
 
 ### Media
-v0.4 implements a local-filesystem media backend with upload limits, MIME/extension allowlists, owner quotas, deduplication, signed URLs and metadata isolation. Object storage is not claimed as implemented.
+Forge implements a local-filesystem media backend with upload limits, MIME/extension allowlists, owner quotas, deduplication, signed URLs and metadata isolation. Object storage is not claimed as implemented.
 
 ### Security
 - API keys are project-scoped.
@@ -106,7 +106,7 @@ v0.4 implements a local-filesystem media backend with upload limits, MIME/extens
 
 ### Dedicated editor control plane
 
-The `Editor` branch contains the C++/Qt desktop editor. A server only exposes its management surface when `EDITOR_API_ENABLED=true`. The editor uses `X-Forge-Editor-Token`, not application API keys, and the server independently enforces HTTPS, source IP ranges, project allowlists, read-only mode, project creation and Python-hook editing. See [`docs/42-Editor-Control-Plane.md`](docs/42-Editor-Control-Plane.md).
+The `Editor` branch contains the C++/Qt desktop editor. A server only exposes its management surface when `EDITOR_API_ENABLED=true`. The editor uses `X-Forge-Editor-Token`, not application API keys, and the server independently enforces HTTPS, source IP ranges, project allowlists, read-only mode, project creation, Python-hook editing and graph editing. See [`docs/42-Editor-Control-Plane.md`](docs/42-Editor-Control-Plane.md).
 
 ## CLI
 
@@ -153,7 +153,7 @@ Native ASGI/Uvicorn is the preferred runtime, especially for SSE/WebSockets. Doc
 
 ## Known limits
 
-Forge v0.4.x is Alpha. In particular:
+Forge v0.5.x is Alpha. In particular:
 
 - same-database idempotency is not cross-system exactly-once delivery;
 - realtime is not a durable broker;

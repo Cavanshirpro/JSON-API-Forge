@@ -1,6 +1,6 @@
 # JSON API Forge Documentation
 
-This index covers the v0.4.2 canonical documentation set. Start with `00-Start-Here.md` and progress toward production/security/reliability topics.
+This index covers the v0.5.0 canonical documentation set. Start with `00-Start-Here.md` and progress toward production/security/reliability topics.
 
 ## Documents
 - [00-Start-Here.md](00-Start-Here.md)

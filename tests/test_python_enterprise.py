@@ -18,6 +18,7 @@ from json_api_forge import (
     ForgeCluster,
     ForgeEndpoint,
     ForgeHTTPError,
+    ForgeTransportError,
     RetryPolicy,
     RoutingStrategy,
 )
@@ -118,6 +119,52 @@ def test_cluster_fails_over_and_opens_failed_endpoint_circuit() -> None:
     assert calls == Counter(primary=1, secondary=2)
 
 
+def test_cluster_never_fails_over_unsafe_request_without_idempotency_key() -> None:
+    calls: Counter[str] = Counter()
+
+    def factory(endpoint: ForgeEndpoint) -> ForgeClient:
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls[endpoint.name] += 1
+            if endpoint.name == "primary":
+                raise httpx.ConnectError("write outcome is unknown", request=request)
+            return httpx.Response(201, json={"created": True})
+
+        return ForgeClient(endpoint.base_url, transport=httpx.MockTransport(handler))
+
+    endpoints = [ForgeEndpoint("primary", "https://primary.test"), ForgeEndpoint("secondary", "https://secondary.test")]
+    with ForgeCluster(endpoints, client_factory=factory) as cluster:
+        with pytest.raises(ForgeTransportError, match="write outcome is unknown"):
+            cluster.request("POST", "api/demo/v1/jobs", json_body={"name": "one"})
+
+    assert calls == Counter(primary=1)
+
+
+def test_cluster_idempotent_failover_preserves_request_id() -> None:
+    request_ids: list[str] = []
+
+    def factory(endpoint: ForgeEndpoint) -> ForgeClient:
+        def handler(request: httpx.Request) -> httpx.Response:
+            request_ids.append(request.headers["X-Request-ID"])
+            if endpoint.name == "primary":
+                raise httpx.ConnectError("offline", request=request)
+            return httpx.Response(201, json={"created": True})
+
+        return ForgeClient(endpoint.base_url, transport=httpx.MockTransport(handler))
+
+    endpoints = [ForgeEndpoint("primary", "https://primary.test"), ForgeEndpoint("secondary", "https://secondary.test")]
+    with ForgeCluster(endpoints, client_factory=factory) as cluster:
+        response = cluster.request(
+            "POST",
+            "api/demo/v1/jobs",
+            json_body={"name": "one"},
+            idempotency_key="job-one",
+        )
+
+    assert response.data == {"created": True}
+    assert len(request_ids) == 2
+    assert len(set(request_ids)) == 1
+
+
 def test_rendezvous_routing_is_stable_for_a_tenant() -> None:
     def factory(endpoint: ForgeEndpoint) -> ForgeClient:
         return ForgeClient(
@@ -157,6 +204,13 @@ def test_bulk_create_preserves_input_order_and_captures_item_failures() -> None:
     assert [result.index for result in results] == list(range(5))
     assert [result.succeeded for result in results] == [True, True, False, True, True]
     assert isinstance(results[2].error, ForgeHTTPError)
+
+
+def test_bulk_helpers_reject_unbounded_input() -> None:
+    client = ForgeClient("https://forge.test", transport=httpx.MockTransport(lambda _: httpx.Response(201, json={})))
+    with ForgeCluster([ForgeEndpoint("only", "https://forge.test")], client_factory=lambda _: client) as cluster:
+        with pytest.raises(ValueError, match="max_items"):
+            cluster.bulk_create("demo", "records", ({"id": value} for value in range(3)), max_items=2)
 
 
 def test_cluster_helpers_reject_unsafe_path_segments() -> None:

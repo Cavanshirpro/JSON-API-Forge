@@ -4,10 +4,12 @@ import asyncio
 import hashlib
 import threading
 import time
+import uuid
 from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from enum import StrEnum
+from itertools import islice
 from typing import Any, Generic, TypeVar
 
 from .client import AsyncForgeClient, ForgeClient, _route, _segment
@@ -70,6 +72,19 @@ def _retryable(error: Exception) -> bool:
     return isinstance(error, ForgeTransportError) or (isinstance(error, ForgeHTTPError) and error.status_code >= 500)
 
 
+def _failover_permitted(method: str, options: Mapping[str, Any]) -> bool:
+    return method.upper() in {"GET", "HEAD", "OPTIONS", "PUT", "DELETE"} or bool(options.get("idempotency_key"))
+
+
+def _bounded_values(values: Iterable[T], maximum: int) -> list[T]:
+    if not 1 <= maximum <= 100_000:
+        raise ValueError("max_items must be between 1 and 100000")
+    result = list(islice(values, maximum + 1))
+    if len(result) > maximum:
+        raise ValueError(f"bulk input exceeds max_items={maximum}")
+    return result
+
+
 class ForgeCluster:
     """Failover/routing facade for horizontally deployed Forge services."""
 
@@ -123,6 +138,7 @@ class ForgeCluster:
             offset = self._cursor % len(candidates)
             self._cursor += 1
         if self.strategy == RoutingStrategy.RENDEZVOUS and routing_key is not None:
+
             def score(endpoint: ForgeEndpoint) -> int:
                 digest = hashlib.blake2b(f"{routing_key}\0{endpoint.name}".encode(), digest_size=16).digest()
                 return int.from_bytes(digest, "big") * endpoint.weight
@@ -144,14 +160,18 @@ class ForgeCluster:
                 state.opened_at = time.monotonic()
 
     def request(self, method: str, path: str, *, routing_key: str | None = None, **kwargs: Any) -> ForgeResponse[Any]:
+        options = dict(kwargs)
+        options.setdefault("request_id", str(uuid.uuid4()))
         failures: list[str] = []
         for endpoint in self._ordered(routing_key):
             try:
-                response = self._clients[endpoint.name].request(method, path, **kwargs)
+                response = self._clients[endpoint.name].request(method, path, **options)
             except Exception as exc:
                 if not _retryable(exc):
                     raise
                 self._failure(endpoint)
+                if not _failover_permitted(method, options):
+                    raise
                 failures.append(f"{endpoint.name}: {exc}")
                 continue
             self._success(endpoint)
@@ -183,10 +203,11 @@ class ForgeCluster:
         payloads: Iterable[Mapping[str, Any]],
         *,
         max_workers: int = 8,
+        max_items: int = 10_000,
         idempotency_key: Callable[[int, Mapping[str, Any]], str | None] | None = None,
         routing_key: Callable[[int, Mapping[str, Any]], str | None] | None = None,
     ) -> list[BulkResult[ForgeResponse[Any]]]:
-        values = [dict(payload) for payload in payloads]
+        values = [dict(payload) for payload in _bounded_values(payloads, max_items)]
         if not 1 <= max_workers <= 64:
             raise ValueError("max_workers must be between 1 and 64")
         results: list[BulkResult[ForgeResponse[Any]] | None] = [None] * len(values)
@@ -279,10 +300,10 @@ class AsyncForgeCluster:
         if self.strategy == RoutingStrategy.RENDEZVOUS and routing_key is not None:
             return sorted(
                 candidates,
-                key=lambda endpoint: int.from_bytes(
-                    hashlib.blake2b(f"{routing_key}\0{endpoint.name}".encode(), digest_size=16).digest(), "big"
-                )
-                * endpoint.weight,
+                key=lambda endpoint: (
+                    int.from_bytes(hashlib.blake2b(f"{routing_key}\0{endpoint.name}".encode(), digest_size=16).digest(), "big")
+                    * endpoint.weight
+                ),
                 reverse=True,
             )
         async with self._lock:
@@ -300,14 +321,18 @@ class AsyncForgeCluster:
             state.opened_at = time.monotonic()
 
     async def request(self, method: str, path: str, *, routing_key: str | None = None, **kwargs: Any) -> ForgeResponse[Any]:
+        options = dict(kwargs)
+        options.setdefault("request_id", str(uuid.uuid4()))
         failures: list[str] = []
         for endpoint in await self._ordered(routing_key):
             try:
-                response = await self._clients[endpoint.name].request(method, path, **kwargs)
+                response = await self._clients[endpoint.name].request(method, path, **options)
             except Exception as exc:
                 if not _retryable(exc):
                     raise
                 self._failure(endpoint)
+                if not _failover_permitted(method, options):
+                    raise
                 failures.append(f"{endpoint.name}: {exc}")
                 continue
             self._success(endpoint)
@@ -337,9 +362,11 @@ class AsyncForgeCluster:
         operations: Iterable[Callable[[], Awaitable[T]]],
         *,
         concurrency: int = 16,
+        max_items: int = 10_000,
     ) -> list[BulkResult[T]]:
         if not 1 <= concurrency <= 256:
             raise ValueError("concurrency must be between 1 and 256")
+        bounded_operations = _bounded_values(operations, max_items)
         semaphore = asyncio.Semaphore(concurrency)
 
         async def run(index: int, operation: Callable[[], Awaitable[T]]) -> BulkResult[T]:
@@ -349,7 +376,7 @@ class AsyncForgeCluster:
                 except Exception as exc:
                     return BulkResult(index=index, error=exc)
 
-        return list(await asyncio.gather(*(run(index, operation) for index, operation in enumerate(operations))))
+        return list(await asyncio.gather(*(run(index, operation) for index, operation in enumerate(bounded_operations))))
 
     async def health_all(self) -> dict[str, ForgeResponse[Any] | Exception]:
         async def health(endpoint: ForgeEndpoint):

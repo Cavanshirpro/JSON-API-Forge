@@ -29,7 +29,7 @@ The sync and async clients support health/metadata, CRUD and operations plus the
 
 ## Large systems
 
-`ForgeCluster` and `AsyncForgeCluster` route across multiple Forge deployments, support deterministic rendezvous routing, bounded failover circuit breakers, per-endpoint health inspection and order-preserving bulk work. Retries are opt-in through `RetryPolicy`; POST requests are never retried unless an idempotency key is supplied.
+`ForgeCluster` and `AsyncForgeCluster` route across multiple Forge deployments, support deterministic rendezvous routing, bounded failover circuit breakers, per-endpoint health inspection and order-preserving bulk work. Retries are opt-in through `RetryPolicy`; POST requests are never retried or failed over unless an idempotency key is supplied. One request ID is preserved across permitted endpoint attempts so traces remain correlated.
 
 ```python
 from json_api_forge import ForgeCluster, ForgeEndpoint, RetryPolicy, RoutingStrategy
@@ -49,7 +49,7 @@ with ForgeCluster(endpoints, strategy=RoutingStrategy.RENDEZVOUS) as cluster:
     )
 ```
 
-The base clients also provide bounded pagination through `iter_items`, request-attempt observers for metrics/tracing, and retry policies with capped exponential backoff.
+The base clients also provide bounded pagination through `iter_items`, request-attempt observers for metrics/tracing, and retry policies with capped exponential backoff. Sync and async bulk helpers default to at most 10,000 input operations and expose an explicit `max_items` bound.
 
 ## YoungLion and DDM extras
 

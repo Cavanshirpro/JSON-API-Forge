@@ -12,9 +12,7 @@ def _ddm_type():
     try:
         from YoungLion import DDM
     except ImportError as exc:
-        raise ForgeIntegrationError(
-            "YoungLion DDM is not installed; use 'pip install json-api-forge[ddm]'"
-        ) from exc
+        raise ForgeIntegrationError("YoungLion DDM is not installed; use 'pip install json-api-forge[ddm]'") from exc
     return DDM
 
 

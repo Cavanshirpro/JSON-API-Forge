@@ -2,6 +2,8 @@
 
 <p align="center"><img src="assets/branding/JSON-API-FORGE_logo.png" width="240" alt="JSON API Forge logo"></p>
 
+> This is the `Editor` branch. It contains the hardened Forge server plus the dedicated C++20/Qt 6 desktop editor, plugin SDK and multi-platform artifact workflow. Use `main` for the runtime-only tree.
+
 **Config-first. Self-hosted. Multi-project. FastAPI-native.**
 
 JSON API Forge turns strict, numbered JSON configuration into a real asynchronous backend: CRUD resources, transactional SQL/RPC operations, MongoDB resources, cache, rate limiting, media, data sources, realtime channels, authentication, OpenAPI and operational endpoints. Python hooks remain the explicit escape hatch for business logic that should not be forced into configuration.
@@ -59,6 +61,16 @@ forge dev
 ```
 
 The generated project documentation is available at `/api/my-service/v1/_docs` once the server is running. See [`INSTALL.md`](INSTALL.md) for editable, Git-ref and Docker installation paths.
+
+## Build the desktop editor
+
+```bash
+cmake --preset release
+cmake --build --preset release
+ctest --preset release
+```
+
+Qt 6.6+ and CMake 3.24+ are required; Qt 6.8 LTS is used by CI. Open `build/release/editor/JSON-API-Forge-Editor` (or the platform bundle). See [`EDITOR.md`](EDITOR.md) for the complete local/remote workflow, server policy, packaging and native plugin contract.
 
 ## Core model
 

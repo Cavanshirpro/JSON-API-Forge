@@ -1,0 +1,44 @@
+name: Editor CodeQL
+
+on:
+  push:
+    branches: [Editor]
+  pull_request:
+    branches: [Editor]
+  workflow_dispatch:
+
+permissions:
+  security-events: write
+  packages: read
+  contents: read
+
+concurrency:
+  group: editor-codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: C++ / Qt security analysis
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.8.3"
+          cache: true
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: c-cpp
+          build-mode: manual
+      - name: Configure instrumented build
+        run: >-
+          cmake -S . -B build/codeql -G Ninja
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DBUILD_TESTING=ON
+          -DFORGE_EDITOR_WARNINGS_AS_ERRORS=ON
+      - name: Compile instrumented build
+        run: cmake --build build/codeql --parallel 2
+      - name: Run editor tests
+        run: ctest --test-dir build/codeql --output-on-failure
+      - uses: github/codeql-action/analyze@v4

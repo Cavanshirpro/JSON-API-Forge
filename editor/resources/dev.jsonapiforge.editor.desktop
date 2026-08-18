@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=JSON API Forge Editor
+Comment=Policy-aware visual and code editor for JSON API Forge
+Exec=JSON-API-Forge-Editor
+Icon=dev.jsonapiforge.editor
+Terminal=false
+Categories=Development;IDE;
+StartupWMClass=JSON-API-Forge-Editor

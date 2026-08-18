@@ -1,0 +1,50 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "resources": [
+    {
+      "database": "primary",
+      "table": "guild_accounts",
+      "path": "ledger/accounts",
+      "auto_create": true,
+      "columns": {
+        "id": {"type": "integer", "primary_key": true, "nullable": false},
+        "member_id": {"type": "string", "nullable": false, "unique": true, "index": true, "max_length": 32},
+        "display_name": {"type": "string", "nullable": false, "max_length": 80},
+        "balance": {"type": "integer", "nullable": false, "default": 0, "index": true},
+        "created_at": {"type": "datetime", "index": true}
+      },
+      "allowed_actions": ["list", "read", "create"],
+      "writable_fields": ["member_id", "display_name", "created_at"],
+      "allowed_filters": ["member_id", "balance"],
+      "filter_operators": ["eq", "ne", "gt", "gte", "lt", "lte", "in"],
+      "allowed_sort": ["id", "member_id", "display_name", "balance", "created_at"],
+      "permissions": {
+        "list": "ledger.accounts.list",
+        "read": "ledger.accounts.read",
+        "create": "ledger.accounts.create"
+      }
+    },
+    {
+      "database": "primary",
+      "table": "guild_ledger_entries",
+      "path": "ledger/entries",
+      "auto_create": true,
+      "columns": {
+        "id": {"type": "integer", "primary_key": true, "nullable": false},
+        "from_member": {"type": "string", "nullable": false, "index": true, "max_length": 32},
+        "to_member": {"type": "string", "nullable": false, "index": true, "max_length": 32},
+        "amount": {"type": "integer", "nullable": false},
+        "reason": {"type": "string", "nullable": false, "max_length": 80},
+        "idempotency_key": {"type": "string", "nullable": false, "index": true, "max_length": 128},
+        "created_at": {"type": "datetime", "index": true}
+      },
+      "allowed_actions": ["list", "read"],
+      "allowed_filters": ["from_member", "to_member", "reason"],
+      "allowed_sort": ["id", "amount", "created_at"],
+      "permissions": {
+        "list": "ledger.entries.list",
+        "read": "ledger.entries.read"
+      }
+    }
+  ]
+}

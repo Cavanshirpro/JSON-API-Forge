@@ -1,0 +1,46 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "resources": [
+    {
+      "database": "primary",
+      "table": "support_tickets",
+      "path": "tickets",
+      "auto_create": true,
+      "columns": {
+        "id": {"type": "integer", "primary_key": true, "nullable": false},
+        "subject": {"type": "string", "nullable": false, "max_length": 180, "index": true},
+        "description": {"type": "text", "nullable": false},
+        "requester": {"type": "string", "nullable": false, "max_length": 120, "index": true},
+        "assignee": {"type": "string", "max_length": 120, "index": true},
+        "status": {"type": "string", "nullable": false, "default": "open", "max_length": 24, "index": true},
+        "severity": {"type": "string", "nullable": false, "default": "normal", "max_length": 24, "index": true},
+        "created_at": {"type": "datetime", "index": true},
+        "updated_at": {"type": "datetime", "index": true},
+        "closed_at": {"type": "datetime"}
+      },
+      "writable_fields": [
+        "subject",
+        "description",
+        "requester",
+        "assignee",
+        "status",
+        "severity",
+        "created_at",
+        "updated_at",
+        "closed_at"
+      ],
+      "allowed_filters": ["requester", "assignee", "status", "severity"],
+      "filter_operators": ["eq", "ne", "in", "isnull"],
+      "search_fields": ["subject", "description"],
+      "allowed_sort": ["id", "status", "severity", "created_at", "updated_at"],
+      "permissions": {
+        "list": "support.tickets.list",
+        "read": "support.tickets.read",
+        "create": "support.tickets.create",
+        "update": "support.tickets.update",
+        "delete": "support.tickets.delete"
+      },
+      "cache": {"enabled": true, "list_ttl_seconds": 5, "read_ttl_seconds": 10}
+    }
+  ]
+}

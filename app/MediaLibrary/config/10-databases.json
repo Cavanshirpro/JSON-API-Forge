@@ -1,0 +1,9 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "databases": {
+    "primary": {
+      "url": "$env:MEDIA_LIBRARY_DATABASE_URL:-sqlite+aiosqlite:///./data/media-library.db",
+      "pool_pre_ping": true
+    }
+  }
+}

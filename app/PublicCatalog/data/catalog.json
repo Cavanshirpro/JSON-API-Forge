@@ -1,0 +1,30 @@
+[
+  {
+    "id": 1,
+    "name": "Starter Workspace",
+    "category": "workspace",
+    "price": 0,
+    "enabled": true
+  },
+  {
+    "id": 2,
+    "name": "Team Workspace",
+    "category": "workspace",
+    "price": 1900,
+    "enabled": true
+  },
+  {
+    "id": 3,
+    "name": "Audit Export",
+    "category": "addon",
+    "price": 500,
+    "enabled": true
+  },
+  {
+    "id": 4,
+    "name": "Legacy Connector",
+    "category": "addon",
+    "price": 300,
+    "enabled": false
+  }
+]

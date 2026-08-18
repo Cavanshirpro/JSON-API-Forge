@@ -1,0 +1,28 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "security": {
+    "bootstrap_enabled": true,
+    "bootstrap_admin_key": "$env:GUILD_LEDGER_BOOTSTRAP_ADMIN_KEY",
+    "bootstrap_one_time": true,
+    "allow_query_api_key": false
+  },
+  "roles": {
+    "admin": {"permissions": ["*"]},
+    "guild_bot": {
+      "permissions": [
+        "ledger.accounts.list",
+        "ledger.accounts.read",
+        "ledger.accounts.create",
+        "ledger.entries.list",
+        "ledger.entries.read",
+        "ledger.balance.read",
+        "ledger.transfer",
+        "system.meta.read"
+      ]
+    },
+    "guild_manager": {
+      "inherits": ["guild_bot"],
+      "permissions": ["ledger.grant"]
+    }
+  }
+}

@@ -2,6 +2,8 @@
 
 <p align="center"><img src="assets/branding/JSON-API-FORGE_logo.png" width="240" alt="JSON API Forge logo"></p>
 
+> This is the `exampleApps` branch. It adds five named, copy-ready applications under `app/`; use `main` for the intentionally example-free runtime tree. See [`EXAMPLE_APPS.md`](EXAMPLE_APPS.md).
+
 **Config-first. Self-hosted. Multi-project. FastAPI-native.**
 
 JSON API Forge turns strict, numbered JSON configuration into a real asynchronous backend: CRUD resources, transactional SQL/RPC operations, MongoDB resources, cache, rate limiting, media, data sources, realtime channels, authentication, OpenAPI and operational endpoints. Python hooks remain the explicit escape hatch for business logic that should not be forced into configuration.

@@ -1,0 +1,25 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "cache": {
+    "enabled": true,
+    "backend": "memory",
+    "default_ttl_seconds": 30,
+    "max_entries": 5000
+  },
+  "rate_limit": {
+    "enabled": true,
+    "backend": "memory",
+    "requests": 180,
+    "window_seconds": 60,
+    "burst": 45,
+    "route_requests": 60,
+    "route_window_seconds": 60,
+    "route_burst": 15
+  },
+  "protection": {
+    "max_request_body_bytes": 12582912,
+    "max_concurrent_requests": 80,
+    "request_timeout_seconds": 30,
+    "trusted_hosts": ["*"]
+  }
+}

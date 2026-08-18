@@ -1,0 +1,31 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "resources": [
+    {
+      "database": "primary",
+      "table": "media_collections",
+      "path": "collections",
+      "auto_create": true,
+      "columns": {
+        "id": {"type": "integer", "primary_key": true, "nullable": false},
+        "name": {"type": "string", "nullable": false, "max_length": 120, "index": true},
+        "description": {"type": "text"},
+        "owner_id": {"type": "string", "nullable": false, "max_length": 120, "index": true},
+        "created_at": {"type": "datetime", "index": true},
+        "updated_at": {"type": "datetime"}
+      },
+      "allowed_actions": ["list", "read", "create", "update"],
+      "writable_fields": ["name", "description", "owner_id", "created_at", "updated_at"],
+      "allowed_filters": ["name", "owner_id"],
+      "search_fields": ["name", "description"],
+      "allowed_sort": ["id", "name", "owner_id", "created_at", "updated_at"],
+      "permissions": {
+        "list": "collections.list",
+        "read": "collections.read",
+        "create": "collections.create",
+        "update": "collections.update"
+      },
+      "cache": {"enabled": true, "list_ttl_seconds": 15, "read_ttl_seconds": 30}
+    }
+  ]
+}

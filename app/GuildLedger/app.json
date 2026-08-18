@@ -1,0 +1,10 @@
+{
+  "$schema": "../../schemas/manifest.schema.json",
+  "slug": "guild-ledger",
+  "name": "Guild Ledger",
+  "version": "1.0.0",
+  "api_prefix": "/api/guild-ledger/v1",
+  "docs_enabled": true,
+  "audit_enabled": true,
+  "cors_origins": []
+}

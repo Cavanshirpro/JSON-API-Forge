@@ -1,0 +1,80 @@
+name: Example applications
+
+on:
+  push:
+    branches: [exampleApps]
+  pull_request:
+    branches: [exampleApps]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: examples-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Python ${{ matrix.python-version }} copy/run validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install Forge
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+      - name: Verify source and release manifest
+        run: |
+          ruff format --check framework clients/python tests scripts forge.py main.py run.py passenger_wsgi.py
+          ruff check framework clients/python tests scripts forge.py main.py run.py passenger_wsgi.py
+          python scripts/check_manifest.py
+          git diff --check
+      - name: Initialize unique local secrets and validate every app together
+        run: |
+          forge init
+          forge validate
+          forge doctor
+      - name: Exercise CRUD, transaction replay, realtime, media, and public data
+        run: python scripts/smoke-example-apps.py
+      - name: Prove one-app copy workflow
+        shell: bash
+        run: |
+          destination=$(mktemp -d)
+          ./scripts/install-example.sh TaskBoard "$destination/app"
+          diff -r app/TaskBoard "$destination/app/TaskBoard"
+
+  artifact:
+    name: Copy-ready application bundle
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - name: Assemble deterministic source bundle
+        shell: bash
+        run: |
+          mkdir -p bundle/app bundle/scripts
+          cp -R app/TaskBoard app/GuildLedger app/RealtimeSupport app/MediaLibrary app/PublicCatalog bundle/app/
+          cp EXAMPLE_APPS.md bundle/
+          cp scripts/install-example.sh scripts/install-example.ps1 bundle/scripts/
+          (cd bundle && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
+          (cd bundle && zip -X -r ../JSON-API-Forge-exampleApps-v0.4.2.zip .)
+          sha256sum JSON-API-Forge-exampleApps-v0.4.2.zip > JSON-API-Forge-exampleApps-v0.4.2.zip.sha256
+      - uses: actions/upload-artifact@v7
+        with:
+          name: JSON-API-Forge-exampleApps-v0.4.2
+          path: |
+            JSON-API-Forge-exampleApps-v0.4.2.zip
+            JSON-API-Forge-exampleApps-v0.4.2.zip.sha256
+          if-no-files-found: error
+          retention-days: 30

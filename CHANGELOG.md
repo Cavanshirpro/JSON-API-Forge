@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.5.0] — 2026-08-18
+
+### Visual authoring and control plane
+- Added bounded, schema-versioned `graphs/*.forgegraph.json` documents behind an independent Editor policy, including exact-field, path, fan-in and cycle validation.
+- Added the Editor branch's Unreal-inspired node/wire authoring model, compiled Forge operation preview, eight atomic project templates and modern Graphite/amber Qt styling.
+- Upgraded the native Editor plugin contract to API v2 with binary SHA-256 verification, declared permissions and plugin-provided graph nodes.
+- Added a bounded Forge-backed plugin catalog contract; metadata is validated without silently downloading, installing or enabling native code.
+
+### Python integration
+- Added safe sync/async retries with stable request IDs, bounded pagination and attempt observers.
+- Added multi-region sync/async clusters with rendezvous routing, circuit breakers, bounded bulk execution and idempotency-gated write failover.
+- Added lazy YoungLion/DDM adapters and package extras named `[younglion]` and `[ddm]`.
+
+### Examples and delivery
+- Expanded `exampleApps` to 25 named systems with deterministic generation and schema, CRUD, RPC, idempotency, realtime and graph smoke coverage.
+- Added six native Editor build targets covering Linux, Windows and macOS on x64 and ARM64, plus checksummed per-platform and combined artifacts.
+
 ## [0.4.2] — 2026-08-18
 
 ### Security and correctness

@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../../schemas/project.schema.json",
+  "$schema": "../../../../schemas/manifest.schema.json",
   "slug": "app1",
   "name": "Example Super App",
   "version": "1.0.0",

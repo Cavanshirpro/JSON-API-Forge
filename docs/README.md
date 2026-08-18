@@ -1,6 +1,6 @@
 # JSON API Forge Documentation
 
-This index covers the v0.4.1 canonical documentation set. Start with `00-Start-Here.md` and progress toward production/security/reliability topics.
+This index covers the v0.4.2 canonical documentation set. Start with `00-Start-Here.md` and progress toward production/security/reliability topics.
 
 ## Documents
 - [00-Start-Here.md](00-Start-Here.md)
@@ -52,6 +52,7 @@ This index covers the v0.4.1 canonical documentation set. Start with `00-Start-H
 - [39-Media-Consistency-Quotas-and-Batch-Semantics.md](39-Media-Consistency-Quotas-and-Batch-Semantics.md)
 - [40-Rate-Limiting-Overload-and-High-RPS.md](40-Rate-Limiting-Overload-and-High-RPS.md)
 - [41-Known-Limits-and-Non-Goals.md](41-Known-Limits-and-Non-Goals.md)
+- [42-Editor-Control-Plane.md](42-Editor-Control-Plane.md)
 - [cPanelGuide.md](cPanelGuide.md)
 
 ## Documentation policy

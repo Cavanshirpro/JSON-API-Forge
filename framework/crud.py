@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+from datetime import UTC
 from typing import Any, Literal
 
 from fastapi import HTTPException, Request
@@ -24,11 +25,7 @@ def _visible(row: dict[str, Any], resource: ResourceConfig) -> dict[str, Any]:
 
 
 def _protected_write_fields(resource: ResourceConfig) -> set[str]:
-    return {
-        field
-        for field in (resource.primary_key, resource.tenant_field, resource.owner_field, resource.soft_delete_field)
-        if field
-    }
+    return {field for field in (resource.primary_key, resource.tenant_field, resource.owner_field, resource.soft_delete_field) if field}
 
 
 def _allowed_write_fields(resource: ResourceConfig, table: Table) -> set[str]:
@@ -357,8 +354,9 @@ async def delete_row(engine, table: Table, resource: ResourceConfig, principal: 
     clauses = [pk == _coerce_for_column(pk, item_id), *_base_clauses(resource, table, principal, action="delete")]
     async with engine.begin() as conn:
         if resource.soft_delete_field:
-            from datetime import datetime, timezone
-            result = await conn.execute(update(table).where(and_(*clauses)).values({resource.soft_delete_field: datetime.now(timezone.utc)}))
+            from datetime import datetime
+
+            result = await conn.execute(update(table).where(and_(*clauses)).values({resource.soft_delete_field: datetime.now(UTC)}))
         else:
             result = await conn.execute(delete(table).where(and_(*clauses)))
     if not result.rowcount:

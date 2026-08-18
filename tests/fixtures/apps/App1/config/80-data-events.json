@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../schemas/fragment.schema.json",
+  "$schema": "../../../../../schemas/fragment.schema.json",
   "data_sources": [
     {"name":"catalog-file","path":"content/catalog","type":"json_file","file":"data/catalog.json","permission":"content.catalog","writable":true,"id_field":"id","cache_ttl_seconds":15}
   ],

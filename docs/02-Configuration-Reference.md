@@ -6,6 +6,6 @@ Use `schemas/project.schema.json` for a complete project and `schemas/fragment.s
 
 Environment interpolation is supported by configuration loading. Prefer environment values for credentials/connection strings and keep `.env` untracked. Strict validation rejects unknown fields and invalid combinations instead of silently ignoring them.
 
-Current framework default version metadata is `0.4.1`; application-specific `version` values may remain their own product versions (for example the bundled App1 is `1.0.0`).
+Current framework default version metadata is `0.4.2`; application-specific `version` values remain their own product versions.
 
 The generated schema is authoritative for field shapes. Run `forge schema` after changing typed config models and commit the generated schema change with the model change.

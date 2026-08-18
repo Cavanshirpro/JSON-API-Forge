@@ -1,7 +1,0 @@
-{
-  "databases": {
-    "primary": {"url": "$env:PRIMARY_DATABASE_URL"},
-    "analytics": {"url": "$env:ANALYTICS_DATABASE_URL"},
-    "legacy_mysql": {"url": "$env:MYSQL_DATABASE_URL"}
-  }
-}

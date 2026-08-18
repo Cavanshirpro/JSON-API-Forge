@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import insert
@@ -53,7 +53,7 @@ class AuditWriter:
         self._task = asyncio.create_task(self._run(), name="forge-audit-writer")
 
     def submit(self, **values) -> None:
-        values["created_at"] = datetime.now(timezone.utc)
+        values["created_at"] = datetime.now(UTC)
         try:
             self.queue.put_nowait(values)
             observe_audit_queue(self.queue.qsize())
@@ -113,7 +113,7 @@ class AuditWriter:
                         break
                     try:
                         batch.append(await asyncio.wait_for(self.queue.get(), timeout))
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         break
                 await self._write_batch_with_retry(batch)
             except asyncio.CancelledError:
@@ -133,7 +133,7 @@ class AuditWriter:
     async def close(self) -> None:
         try:
             await asyncio.wait_for(self.queue.join(), timeout=self.shutdown_timeout_seconds)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             remaining = self.queue.qsize()
             if remaining:
                 self.dropped += remaining

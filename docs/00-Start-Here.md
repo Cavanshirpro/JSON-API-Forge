@@ -7,6 +7,7 @@ JSON API Forge is a config-first FastAPI backend runtime. The normal workflow is
 python -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\Activate.ps1
 pip install -e ".[dev]"
+forge new MyService --slug my-service
 forge init
 forge validate
 forge doctor
@@ -20,5 +21,5 @@ A directory containing `app.json` is one project. `config/*.json` files are merg
 ## Recommended reading order
 Read architecture and multi-project configuration next, then security, databases, operations, data sources, media/realtime, CLI/testing, and finally production/failure-mode documents. `docs/README.md` contains the index.
 
-## v0.4.1 note
-Only explicit project directories are valid project roots. The obsolete root `app/config` and `app/hooks` layout was removed. If you carried forward an early single-project prototype, move its configuration/hook files into `app/<Project>/` before upgrading.
+## v0.4.2 note
+`main` intentionally ships with an empty `app/`. Create a project with `forge new`, or copy a named project from the `exampleApps` branch. Only explicit project directories are valid project roots; reserved legacy root folders are ignored. The dedicated Qt editor and its server policy are documented in `42-Editor-Control-Plane.md`.

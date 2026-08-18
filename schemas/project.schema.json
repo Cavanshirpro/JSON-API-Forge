@@ -817,6 +817,8 @@
         },
         "max_upload_bytes": {
           "default": 26214400,
+          "maximum": 1073741824,
+          "minimum": 1,
           "title": "Max Upload Bytes",
           "type": "integer"
         },
@@ -2641,7 +2643,7 @@
       "type": "string"
     },
     "version": {
-      "default": "0.4.1",
+      "default": "0.4.2",
       "title": "Version",
       "type": "string"
     },

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.2] — 2026-08-18
+
+### Security and correctness
+- Hardened project discovery, path/header validation, API-key expiry caching, delegated-rate containment and WebSocket connection accounting.
+- Disabled ambient environment proxy inheritance for controlled outbound HTTP and JWKS retrieval.
+- Added a disabled-by-default editor control plane with an independent credential, TLS/IP/project policies, validated atomic writes and SHA-256 conflict detection.
+
+### Distribution and developer experience
+- Removed all bundled examples from `main`; examples now live only on the `exampleApps` branch.
+- Fixed `forge new` schema references and traversal handling, generated schemas when installed outside a source checkout, and made `forge dev` work after a Git installation.
+- Added reproducible install helpers and branch-specific Python library, Qt editor and example-app build workflows.
+
 ## [0.4.1] — 2026-08-10
 
 ### Correctness

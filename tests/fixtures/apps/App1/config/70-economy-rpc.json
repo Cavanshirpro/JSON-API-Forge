@@ -1,5 +1,5 @@
 {
-  "$schema": "../../../schemas/fragment.schema.json",
+  "$schema": "../../../../../schemas/fragment.schema.json",
   "resources": [
     {
       "database": "primary",

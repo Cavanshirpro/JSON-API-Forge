@@ -1,6 +1,6 @@
 {
   "name": "@json-api-forge/client-example",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "private": true,
   "description": "Reference TypeScript client for JSON API Forge official releases",
   "type": "module",

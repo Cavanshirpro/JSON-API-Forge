@@ -9,13 +9,15 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from .config import ForgeConfig, ProjectConfig, load_config
-from .settings import load_settings, settings
+from .config import ForgeConfig, load_config
 from .doctor import ensure_no_errors, forge_diagnostics
 from .domain import expand_feature_packs
+from .settings import load_settings, settings
 
 _ENV_REF = re.compile(r"\$env:([A-Z0-9_]+)(?::-[^\"']*)?")
 _SECRET_NAME = re.compile(r"(SECRET|TOKEN|KEY|PASSWORD)", re.I)
+_PROJECT_NAME = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9 ._-]{0,62}[A-Za-z0-9])?$")
+_PROJECT_SLUG = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$")
 
 
 def _root(args: argparse.Namespace) -> Path:
@@ -85,7 +87,7 @@ def cmd_routes(args: argparse.Namespace) -> None:
         os.chdir(old)
 
 
-def _fragment_schema_rel(project_dir: Path) -> str:
+def _fragment_schema_rel() -> str:
     return "../../../schemas/fragment.schema.json"
 
 
@@ -93,15 +95,11 @@ def _starter_fragments(name: str, slug: str, preset: str) -> dict[str, dict[str,
     env_prefix = re.sub(r"[^A-Z0-9]+", "_", slug.upper())
     fragments: dict[str, dict[str, Any]] = {
         "10-databases.json": {
-            "$schema": _fragment_schema_rel(Path()),
-            "databases": {
-                "primary": {
-                    "url": f"$env:{env_prefix}_DATABASE_URL:-sqlite+aiosqlite:///./data/{slug}.db"
-                }
-            },
+            "$schema": _fragment_schema_rel(),
+            "databases": {"primary": {"url": f"$env:{env_prefix}_DATABASE_URL:-sqlite+aiosqlite:///./data/{slug}.db"}},
         },
         "20-security.json": {
-            "$schema": _fragment_schema_rel(Path()),
+            "$schema": _fragment_schema_rel(),
             "security": {
                 "bootstrap_enabled": True,
                 "bootstrap_admin_key": f"$env:{env_prefix}_BOOTSTRAP_ADMIN_KEY",
@@ -110,7 +108,7 @@ def _starter_fragments(name: str, slug: str, preset: str) -> dict[str, dict[str,
             "roles": {"admin": {"permissions": ["*"]}},
         },
         "30-performance.json": {
-            "$schema": _fragment_schema_rel(Path()),
+            "$schema": _fragment_schema_rel(),
             "cache": {"enabled": True, "backend": "memory", "default_ttl_seconds": 30},
             "rate_limit": {
                 "enabled": True,
@@ -123,11 +121,11 @@ def _starter_fragments(name: str, slug: str, preset: str) -> dict[str, dict[str,
         },
     }
     if preset == "minimal":
-        fragments["40-resources.json"] = {"$schema": _fragment_schema_rel(Path()), "resources": []}
+        fragments["40-resources.json"] = {"$schema": _fragment_schema_rel(), "resources": []}
     else:
         permission = f"{slug}.items"
         fragments["40-resources.json"] = {
-            "$schema": _fragment_schema_rel(Path()),
+            "$schema": _fragment_schema_rel(),
             "resources": [
                 {
                     "database": "primary",
@@ -152,7 +150,7 @@ def _starter_fragments(name: str, slug: str, preset: str) -> dict[str, dict[str,
         }
     if preset == "discord-bot":
         fragments["50-bot.json"] = {
-            "$schema": _fragment_schema_rel(Path()),
+            "$schema": _fragment_schema_rel(),
             "roles": {
                 "bot": {
                     "permissions": [
@@ -164,7 +162,7 @@ def _starter_fragments(name: str, slug: str, preset: str) -> dict[str, dict[str,
         }
     elif preset == "game-backend":
         fragments["50-game.json"] = {
-            "$schema": _fragment_schema_rel(Path()),
+            "$schema": _fragment_schema_rel(),
             "features": {"gaming": {"enabled": True, "database": "primary", "table_prefix": "game_"}},
         }
     return fragments
@@ -174,14 +172,21 @@ def cmd_new(args: argparse.Namespace) -> None:
     root = _root(args)
     name = args.name
     slug = args.slug or re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+    if not _PROJECT_NAME.fullmatch(name) or name in {".", ".."}:
+        raise SystemExit("Project name must be 1-64 safe filename characters and cannot contain a path")
+    if not _PROJECT_SLUG.fullmatch(slug):
+        raise SystemExit("Project slug must be 1-64 lowercase letters, digits or internal hyphens")
     target = root / "app" / name
+    apps_root = (root / "app").resolve()
+    if target.resolve().parent != apps_root:
+        raise SystemExit("Project target must be an immediate child of app/")
     if target.exists():
         raise SystemExit(f"Already exists: {target}")
     (target / "config").mkdir(parents=True)
     (target / "hooks").mkdir()
     (target / "data").mkdir()
     manifest = {
-        "$schema": "../../schemas/fragment.schema.json",
+        "$schema": "../../schemas/project.schema.json",
         "slug": slug,
         "name": name,
         "version": "1.0.0",
@@ -194,6 +199,11 @@ def cmd_new(args: argparse.Namespace) -> None:
     for filename, value in fragments.items():
         (target / "config" / filename).write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
     (target / "hooks" / "__init__.py").write_text("", encoding="utf-8")
+    schema_dir = root / "schemas"
+    if not (schema_dir / "project.schema.json").exists() or not (schema_dir / "fragment.schema.json").exists():
+        from .schema import write_schemas
+
+        write_schemas(schema_dir)
     print(f"Created {target} preset={args.preset} fragments={len(fragments)}")
     print("Next: run `forge init` (once per checkout), then `forge validate` and `forge dev`.")
 
@@ -225,7 +235,7 @@ def _replace_env_secrets(text: str, values: dict[str, str]) -> str:
     assignment = re.compile(r"^(\s*)([A-Za-z_][A-Za-z0-9_]*)(\s*=).*$")
     for line in text.splitlines(keepends=True):
         raw = line.rstrip("\r\n")
-        ending = line[len(raw):] or "\n"
+        ending = line[len(raw) :] or "\n"
         match = assignment.match(raw)
         if match and match.group(2) in values:
             name = match.group(2)
@@ -309,7 +319,9 @@ def cmd_openapi(args: argparse.Namespace) -> None:
 def cmd_migrate(args: argparse.Namespace) -> None:
     """Create Forge-owned support tables and declarative auto-create SQL tables explicitly."""
     import asyncio
+
     from sqlalchemy.ext.asyncio import create_async_engine
+
     from .db import build_registry
     from .security import init_security
 
@@ -351,7 +363,16 @@ def cmd_dev(args: argparse.Namespace) -> None:
     os.chdir(root)
     import uvicorn
 
-    uvicorn.run("main:app", host=args.host, port=args.port, reload=args.reload, log_level=args.log_level, proxy_headers=False, access_log=False)
+    uvicorn.run(
+        "framework.factory:create_app",
+        factory=True,
+        host=args.host,
+        port=args.port,
+        reload=args.reload,
+        log_level=args.log_level,
+        proxy_headers=False,
+        access_log=False,
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:

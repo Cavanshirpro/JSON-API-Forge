@@ -1,6 +1,6 @@
 # Production Readiness Matrix
 
-| Area | v0.4.1 status | Production action |
+| Area | v0.4.2 status | Production action |
 |---|---|---|
 | HTTP CRUD/RPC | Mature alpha primitive | load/security test your schema |
 | PostgreSQL | Live CI target | explicit migrations/backups |

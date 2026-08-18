@@ -12,6 +12,10 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 from .settings import settings
 
 _ENV_PATTERN = re.compile(r"^\$env:([A-Z0-9_]+)(?::-(.*))?$")
+_SLUG_PATTERN = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$")
+_ROUTE_SEGMENT_PATTERN = re.compile(r"^[A-Za-z0-9._~{}:-]+$")
+_HEADER_PATTERN = re.compile(r"^[!#$%&'*+.^_`|~0-9A-Za-z-]+$")
+_RESERVED_APP_DIRECTORIES = frozenset({"config", "data", "hooks", "plugins", "schemas"})
 
 
 class ForgeModel(BaseModel):
@@ -43,8 +47,14 @@ def _resolve_env(value: Any, dotenv: dict[str, str | None] | None = None) -> Any
 
 
 _APPEND_LIST_KEYS = {
-    "resources", "mongo_resources", "operations", "data_sources", "dependencies",
-    "custom_endpoints", "event_channels", "webhook_docs",
+    "resources",
+    "mongo_resources",
+    "operations",
+    "data_sources",
+    "dependencies",
+    "custom_endpoints",
+    "event_channels",
+    "webhook_docs",
 }
 
 
@@ -172,6 +182,10 @@ class SecurityConfig(ForgeModel):
             invalid = sorted(set(self.jwt_algorithms) - allowed)
             if invalid:
                 raise ValueError(f"JWKS verification only accepts asymmetric signing algorithms; invalid={invalid}")
+        for field_name in ("api_key_header", "idempotency_header"):
+            value = getattr(self, field_name)
+            if not _HEADER_PATTERN.fullmatch(value):
+                raise ValueError(f"security.{field_name} must be a valid HTTP header name")
         return self
 
 
@@ -206,7 +220,9 @@ class ResourceConfig(ForgeModel):
     default_limit: int = Field(default=50, ge=1)
     max_limit: int = Field(default=200, ge=1)
     allowed_filters: list[str] = Field(default_factory=list)
-    filter_operators: list[Literal["eq", "ne", "gt", "gte", "lt", "lte", "in", "like", "ilike", "isnull"]] = Field(default_factory=lambda: ["eq"])
+    filter_operators: list[Literal["eq", "ne", "gt", "gte", "lt", "lte", "in", "like", "ilike", "isnull"]] = Field(
+        default_factory=lambda: ["eq"]
+    )
     search_fields: list[str] = Field(default_factory=list)
     allowed_sort: list[str] = Field(default_factory=list)
     pagination_mode: Literal["offset", "cursor"] = "offset"
@@ -446,7 +462,9 @@ class DataSourceConfig(ForgeModel):
         if self.public_write and (self.write_permission or self.permission):
             raise ValueError("public writable data source must not also define write_permission/permission")
         if self.writable and not self.public_write and not (self.write_permission or self.permission):
-            raise ValueError("writable data source mutations are private by default; set write_permission/permission or explicit public_write=true")
+            raise ValueError(
+                "writable data source mutations are private by default; set write_permission/permission or explicit public_write=true"
+            )
         return self
 
 
@@ -506,13 +524,21 @@ class MediaConfig(ForgeModel):
     enabled: bool = False
     backend: Literal["local"] = "local"
     local_directory: str = "./data/media"
-    max_upload_bytes: int = 25 * 1024 * 1024
+    max_upload_bytes: int = Field(default=25 * 1024 * 1024, ge=1, le=1024 * 1024 * 1024)
     max_batch_files: int = Field(default=8, ge=1, le=100)
     max_owner_bytes: int | None = Field(default=None, ge=1)
-    allowed_mime_types: list[str] = Field(default_factory=lambda: [
-        "image/jpeg", "image/png", "image/webp", "image/gif",
-        "video/mp4", "audio/mpeg", "audio/ogg", "application/pdf",
-    ])
+    allowed_mime_types: list[str] = Field(
+        default_factory=lambda: [
+            "image/jpeg",
+            "image/png",
+            "image/webp",
+            "image/gif",
+            "video/mp4",
+            "audio/mpeg",
+            "audio/ogg",
+            "application/pdf",
+        ]
+    )
     allowed_extensions: list[str] = Field(default_factory=list)
     public: bool = False
     upload_permission: str = "media.upload"
@@ -564,14 +590,16 @@ class FeaturePacksConfig(ForgeModel):
 class ProjectConfig(ForgeModel):
     slug: str
     name: str
-    version: str = "0.4.1"
+    version: str = "0.4.2"
     enabled: bool = True
     api_prefix: str | None = None
     docs_enabled: bool = True
     audit_enabled: bool = True
     cors_origins: list[str] = Field(default_factory=lambda: ["*"])
     cors_methods: list[str] = Field(default_factory=lambda: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
-    cors_headers: list[str] = Field(default_factory=lambda: ["Authorization", "Content-Type", "X-API-Key", "Idempotency-Key", "X-Request-ID"])
+    cors_headers: list[str] = Field(
+        default_factory=lambda: ["Authorization", "Content-Type", "X-API-Key", "Idempotency-Key", "X-Request-ID"]
+    )
     cors_expose_headers: list[str] = Field(default_factory=lambda: ["X-Request-ID", "X-Forge-Cache"])
     cors_allow_credentials: bool = False
     cors_max_age_seconds: int = Field(default=600, ge=0, le=86400)
@@ -598,10 +626,18 @@ class ProjectConfig(ForgeModel):
 
     @model_validator(mode="after")
     def finalize_prefix(self):
+        if not _SLUG_PATTERN.fullmatch(self.slug):
+            raise ValueError("slug must be 1-64 lowercase letters, digits or internal hyphens")
+        if not self.name.strip() or len(self.name) > 120 or any(ch in self.name for ch in "\r\n\0"):
+            raise ValueError("name must be non-empty, at most 120 characters and contain no control line breaks")
         prefix = self.api_prefix or f"/api/{self.slug}/v1"
         if not prefix.startswith("/"):
             prefix = "/" + prefix
         object.__setattr__(self, "api_prefix", prefix.rstrip("/") or "/")
+        if "\\" in self.api_prefix or "?" in self.api_prefix or "#" in self.api_prefix or ".." in self.api_prefix:
+            raise ValueError("api_prefix must be a normalized URL path without traversal, query or fragment syntax")
+        if any(not _ROUTE_SEGMENT_PATTERN.fullmatch(segment) for segment in self.api_prefix.split("/") if segment):
+            raise ValueError("api_prefix contains an invalid URL path segment")
         if self.cors_allow_credentials and "*" in self.cors_origins:
             raise ValueError("cors_allow_credentials=true cannot be combined with wildcard origin")
         for origin in self.cors_origins:
@@ -614,15 +650,18 @@ class ProjectConfig(ForgeModel):
 
 class ForgeConfig(ForgeModel):
     name: str = "JSON API Forge"
-    version: str = "0.4.1"
+    version: str = "0.4.2"
     projects: list[ProjectConfig]
 
 
 def _load_json(path: Path) -> dict[str, Any]:
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        value = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         raise RuntimeError(f"Invalid JSON in {path}: {exc}") from exc
+    if not isinstance(value, dict):
+        raise RuntimeError(f"Invalid JSON in {path}: the document root must be an object")
+    return value
 
 
 def _load_project_dir(project_dir: Path, *, dotenv: dict[str, str | None] | None = None) -> ProjectConfig:
@@ -659,7 +698,11 @@ def load_config(apps_dir: Path | None = None) -> ForgeConfig:
         raise RuntimeError(f"Apps directory does not exist: {apps_dir}")
     projects: list[ProjectConfig] = []
     root_dotenv = dotenv_values(apps_dir.resolve().parent / ".env")
-    for project_dir in sorted(p for p in apps_dir.iterdir() if p.is_dir() and not p.name.startswith("_")):
+    for project_dir in sorted(
+        p
+        for p in apps_dir.iterdir()
+        if p.is_dir() and not p.name.startswith(("_", ".")) and p.name.casefold() not in _RESERVED_APP_DIRECTORIES
+    ):
         manifest = project_dir / "app.json"
         fallback = project_dir / "manifest.json"
         if manifest.exists() or fallback.exists():
@@ -676,7 +719,7 @@ def load_config(apps_dir: Path | None = None) -> ForgeConfig:
         raise RuntimeError("Project api_prefix values must be unique")
     normalized = sorted((p.api_prefix.rstrip("/"), p.slug) for p in projects)
     for index, (prefix, slug) in enumerate(normalized):
-        for other, other_slug in normalized[index + 1:]:
+        for other, other_slug in normalized[index + 1 :]:
             if other.startswith(prefix + "/") or prefix.startswith(other + "/"):
                 raise RuntimeError(f"Project api_prefix values may not overlap: {slug}={prefix!r}, {other_slug}={other!r}")
     return ForgeConfig(projects=projects)

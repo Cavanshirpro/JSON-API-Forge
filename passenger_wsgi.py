@@ -4,7 +4,9 @@ Passenger is normally WSGI-oriented. a2wsgi bridges this FastAPI ASGI app to WSG
 For WebSockets and other ASGI-only features, use a host that can run Uvicorn/Hypercorn
 behind a reverse proxy instead of Passenger WSGI mode.
 """
+
 from a2wsgi import ASGIMiddleware
+
 from main import app
 
 application = ASGIMiddleware(app)

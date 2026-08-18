@@ -82,7 +82,9 @@ class DataSourceManager:
             addresses = [str(ipaddress.ip_address(host))]
         except ValueError:
             try:
-                infos = await asyncio.to_thread(socket.getaddrinfo, host, parsed.port or (443 if parsed.scheme == "https" else 80), type=socket.SOCK_STREAM)
+                infos = await asyncio.to_thread(
+                    socket.getaddrinfo, host, parsed.port or (443 if parsed.scheme == "https" else 80), type=socket.SOCK_STREAM
+                )
             except OSError as exc:
                 raise HTTPException(status_code=502, detail="HTTP data source hostname could not be resolved") from exc
             addresses = sorted({info[4][0] for info in infos})
@@ -142,7 +144,9 @@ class DataSourceManager:
             field = sort[1:] if reverse else sort
             if field not in source.allowed_sort:
                 raise HTTPException(status_code=400, detail=f"Data source sort is not allowed: {field}")
-            rows = sorted(rows, key=lambda r: (r.get(field) is None, r.get(field)) if isinstance(r, dict) else (True, None), reverse=reverse)
+            rows = sorted(
+                rows, key=lambda r: (r.get(field) is None, r.get(field)) if isinstance(r, dict) else (True, None), reverse=reverse
+            )
         try:
             limit = int(request.query_params.get("limit", "100"))
             offset = int(request.query_params.get("offset", "0"))
@@ -151,10 +155,11 @@ class DataSourceManager:
         if limit < 1 or offset < 0:
             raise HTTPException(status_code=400, detail="limit must be >= 1 and offset must be >= 0")
         limit = min(limit, source.max_items)
-        return {"items": rows[offset:offset + limit], "limit": limit, "offset": offset, "total": len(rows)}
+        return {"items": rows[offset : offset + limit], "limit": limit, "offset": offset, "total": len(rows)}
 
     def _mutate_file_sync(self, source: DataSourceConfig, action: str, *, payload: Any = None, item_id: str | None = None) -> Any:
         from filelock import FileLock, Timeout
+
         path = self._file_path(source)
         lock = FileLock(str(path) + ".forge.lock", timeout=source.file_lock_timeout_seconds)
         try:
@@ -182,7 +187,7 @@ class DataSourceManager:
                     for idx, row in enumerate(data):
                         if isinstance(row, dict) and str(row.get(source.id_field)) == str(item_id):
                             immutable_id = row.get(source.id_field)
-                            updated = ({**row, **payload} if action == "update" else dict(payload))
+                            updated = {**row, **payload} if action == "update" else dict(payload)
                             updated[source.id_field] = immutable_id
                             data[idx] = updated
                             self._write_file_sync(source, data)
@@ -208,7 +213,9 @@ class DataSourceManager:
         if not source.writable or source.type not in {"json_file", "yaml_file"}:
             raise HTTPException(status_code=405, detail="Data source is read-only")
         async with self._lock(source.name):
-            return await asyncio.to_thread(self._mutate_file_sync, source, "replace" if replace else "update", payload=payload, item_id=item_id)
+            return await asyncio.to_thread(
+                self._mutate_file_sync, source, "replace" if replace else "update", payload=payload, item_id=item_id
+            )
 
     async def delete(self, source: DataSourceConfig, item_id: str) -> dict[str, bool]:
         if not source.writable or source.type not in {"json_file", "yaml_file"}:

@@ -1,10 +1,12 @@
-# JSON API Forge v0.4.1
+# JSON API Forge v0.4.2
+
+<p align="center"><img src="assets/branding/JSON-API-FORGE_logo.png" width="240" alt="JSON API Forge logo"></p>
 
 **Config-first. Self-hosted. Multi-project. FastAPI-native.**
 
 JSON API Forge turns strict, numbered JSON configuration into a real asynchronous backend: CRUD resources, transactional SQL/RPC operations, MongoDB resources, cache, rate limiting, media, data sources, realtime channels, authentication, OpenAPI and operational endpoints. Python hooks remain the explicit escape hatch for business logic that should not be forced into configuration.
 
-> **v0.4.1 is a corrective hardening patch.** It fixes defects exposed by the first v0.4 GitHub-hosted CI runs without changing the project’s core architecture. The project remains **Alpha**.
+> **v0.4.2 is a hardening and tooling release.** It keeps the config-first architecture, removes examples from `main`, closes additional authorization/concurrency edges, and adds a policy-gated control plane for the dedicated Qt editor. The project remains **Alpha**.
 
 ## Why JSON API Forge exists
 
@@ -13,7 +15,7 @@ Most backends repeatedly rebuild the same infrastructure: routing, CRUD, authori
 A project lives under `app/<Project>/` and can be split into numbered fragments:
 
 ```text
-app/App1/
+app/MyService/
 ├── app.json
 ├── config/
 │   ├── 10-databases.json
@@ -30,37 +32,33 @@ app/App1/
 
 Fragments are merged alphabetically and then validated by strict Pydantic models. Unknown configuration keys are rejected.
 
-## v0.4.1 fixes
+## v0.4.2 hardening
 
-- Removed the obsolete root `app/config` pseudo-project that was being discovered as a third application.
-- Removed obsolete root `app/hooks`; hooks are project-scoped.
-- Preserved the PostgreSQL fragment example under `examples/postgres-fragment.json`.
-- Fixed idempotent HTTP replay responses so object replays contain `_idempotent_replay: true` and expose `X-Forge-Idempotent-Replay: true`.
-- Prevented operation background hooks from running again during an idempotent replay.
-- Replaced deprecated FastAPI `ORJSONResponse` runtime paths with `JSONResponse` plus `jsonable_encoder` compatibility.
-- Raised the `pydantic-settings` minimum to the security-fixed line and aligned several tested dependency floors with the versions exercised on GitHub-hosted runners.
-- Updated `actions/checkout` to v7 and the TypeScript reference client to TypeScript 7.0.2.
-- Fixed the MongoDB example so server-controlled tenant policy fields are not client-writable.
-- Updated Forge/project default version metadata and regenerated JSON Schemas.
-- Added release-manifest verification to CI.
+- `main` contains no bundled application or example; `forge new` creates the first project and `exampleApps` contains copy-ready samples.
+- Legacy root `app/config`, `app/hooks`, hidden directories and reserved support directories are ignored during discovery.
+- Project names, slugs, API prefixes and HTTP header names are validated against traversal/control-character ambiguity.
+- Ambient proxy variables are not trusted by outbound data-source or JWKS clients unless code explicitly opts in.
+- Expired API keys are never cached; unknown delegated roles are rejected; child credentials cannot obtain a higher sustained request rate.
+- WebSocket connection caps reserve a slot atomically, closing a concurrent oversubscription race.
+- The remote editor API is disabled by default and has a separate token, TLS/IP/project/hook/read-only policies, optimistic concurrency and validated atomic writes.
+- Python 3.11–3.14, live PostgreSQL 17/Redis 8/MongoDB 8, package, TypeScript, container, manifest and CodeQL gates remain required.
 
 ## Quick start
 
 ```bash
-python -m venv .venv
-# Linux/macOS
-source .venv/bin/activate
-# Windows PowerShell
-# .venv\Scripts\Activate.ps1
+git clone https://github.com/Cavanshirpro/JSON-API-Forge.git
+cd JSON-API-Forge
+./scripts/install.sh             # Windows: .\scripts\install.ps1
+source .venv/bin/activate        # Windows: .\.venv\Scripts\Activate.ps1
 
-python -m pip install -e ".[dev]"
+forge new MyService --slug my-service
 forge init
 forge validate
 forge doctor
 forge dev
 ```
 
-Default documentation for the example project is available at `/api/app1/v1/_docs` once the server is running.
+The generated project documentation is available at `/api/my-service/v1/_docs` once the server is running. See [`INSTALL.md`](INSTALL.md) for editable, Git-ref and Docker installation paths.
 
 ## Core model
 
@@ -94,6 +92,10 @@ v0.4 implements a local-filesystem media backend with upload limits, MIME/extens
 - Trusted proxy CIDRs control whether forwarded IP/protocol headers are accepted.
 - Process-level metrics/detailed readiness use a separate operator credential.
 
+### Dedicated editor control plane
+
+The `Editor` branch contains the C++/Qt desktop editor. A server only exposes its management surface when `EDITOR_API_ENABLED=true`. The editor uses `X-Forge-Editor-Token`, not application API keys, and the server independently enforces HTTPS, source IP ranges, project allowlists, read-only mode, project creation and Python-hook editing. See [`docs/42-Editor-Control-Plane.md`](docs/42-Editor-Control-Plane.md).
+
 ## CLI
 
 ```text
@@ -124,6 +126,8 @@ The official CI targets:
 - CodeQL;
 - tracked-source `MANIFEST.sha256` verification;
 - a tag-only release gate that depends on the required jobs.
+
+The `python-library`, `Editor` and `exampleApps` branches have branch-specific build workflows. They produce downloadable artifacts but do not publish packages or releases automatically.
 
 A local green run is useful, but an official release should not be tagged while the canonical GitHub-hosted CI is red.
 

@@ -33,8 +33,16 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e ".[dev]"
+      - name: Lint and format contract
+        if: matrix.python-version == '3.13'
+        run: |
+          ruff format --check framework tests scripts forge.py main.py run.py passenger_wsgi.py
+          ruff check framework tests scripts forge.py main.py run.py passenger_wsgi.py
+      - name: Verify release manifest
+        run: python scripts/check_manifest.py
       - name: Validate declarative configuration
         run: |
+          forge new CIProject --slug ci-project
           forge validate
           forge doctor
           forge init --production
@@ -43,16 +51,40 @@ jobs:
           git diff --exit-code -- schemas
       - name: Compile Python sources
         run: python -m compileall -q framework app tests
-      - name: Verify release manifest
-        run: python scripts/check_manifest.py
       - name: Verify installed dependency graph
         run: python -m pip check
       - name: Test with branch coverage
         run: |
           pytest --cov=framework --cov-report=term-missing --cov-report=xml --cov-report=json:coverage.json -q
           python scripts/check_critical_coverage.py coverage.json
-      - name: Build installable artifacts
-        run: python -m build
+
+  package:
+    name: Build and isolated-install package
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Build source and wheel artifacts
+        run: |
+          python -m pip install --upgrade pip build twine
+          python -m build
+          python -m twine check dist/*
+      - name: Test the wheel outside the checkout
+        run: |
+          python -m venv "${{ runner.temp }}/forge-wheel"
+          "${{ runner.temp }}/forge-wheel/bin/python" -m pip install dist/*.whl
+          cd "${{ runner.temp }}"
+          "${{ runner.temp }}/forge-wheel/bin/forge" --help
+          "${{ runner.temp }}/forge-wheel/bin/python" -c "from framework import config; print(config.ForgeConfig.model_fields['version'].default)"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: json-api-forge-v0.4.2-python
+          path: dist/*
+          if-no-files-found: error
 
   integration:
     name: PostgreSQL + Redis + MongoDB integration
@@ -133,7 +165,7 @@ jobs:
   release-gate:
     name: Release gate
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [unit, integration, typescript, container-build]
+    needs: [unit, integration, package, typescript, container-build]
     runs-on: ubuntu-latest
     steps:
-      - run: echo "All Python, live-service, TypeScript, and container checks passed for ${{ github.ref_name }}."
+      - run: echo "All Python, package, live-service, TypeScript, and container checks passed for ${{ github.ref_name }}."

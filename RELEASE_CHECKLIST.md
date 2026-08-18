@@ -1,10 +1,10 @@
-# Release Checklist — v0.4.1
+# Release Checklist — v0.4.2
 
 This checklist is for the Project Owner and authorized maintainers of the canonical repository.
 
 ## Version and source
-- [ ] `VERSION`, `pyproject.toml`, TypeScript metadata, `CITATION.cff`, `CHANGELOG.md`, `README.md` and `RELEASE.md` identify v0.4.1 where current-version metadata is intended.
-- [ ] `forge validate` succeeds and discovers only intended projects.
+- [ ] `VERSION`, `pyproject.toml`, TypeScript metadata, `CITATION.cff`, `CHANGELOG.md`, `README.md` and `RELEASE.md` identify v0.4.2 where current-version metadata is intended.
+- [ ] `main` has an empty `app/`; a temporary `forge new` project validates successfully.
 - [ ] `forge doctor` reports no errors.
 - [ ] `forge doctor --production` is exercised with representative production secrets supplied outside Git.
 - [ ] `forge schema` creates no schema drift.
@@ -27,13 +27,14 @@ This checklist is for the Project Owner and authorized maintainers of the canoni
 - [ ] No `.env`, credentials, keys, DBs, logs, local media, caches, coverage output, build output or `__pycache__` exists in the release tree.
 - [ ] `.env.example` contains no usable secret.
 - [ ] Bootstrap, delegation, JWT/JWKS, tenant/owner policies, proxy trust, rate limits, idempotency and public endpoints are reviewed.
+- [ ] Editor API remains disabled by default and its independent token/TLS/IP/project/write policies are regression-tested.
 - [ ] Docs do not overclaim exactly-once external delivery, durable realtime, object-storage support or attacker-safe arbitrary SQL.
 - [ ] `LICENSE`, notices, ownership and contributor documents are present.
 - [ ] Dependency/security alerts are reviewed.
 
 ## Publish
-- [ ] Commit the exact v0.4.1 tree to `main` after v0.4.0.
+- [ ] Commit the exact v0.4.2 tree to `main` after v0.4.1.
 - [ ] Wait for `main` CI to pass.
-- [ ] Create annotated tag `v0.4.1` from that exact commit and push it.
+- [ ] Create annotated tag `v0.4.2` from that exact commit and push it.
 - [ ] Wait for the tag release gate.
 - [ ] Publish the GitHub Release using `RELEASE.md`.

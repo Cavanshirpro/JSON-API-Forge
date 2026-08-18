@@ -1,6 +1,6 @@
 # GitHub Release Assets
 
-For the current source-only JSON API Forge releases, no separately attached binary ZIP is required. GitHub automatically provides **Source code (zip)** and **Source code (tar.gz)** for each official tag. Those automatic archives are sufficient for v0.1.0 through v0.4.1.
+GitHub automatically provides **Source code (zip)** and **Source code (tar.gz)** for each official tag. Beginning with v0.4.2, CI also builds checked wheel/sdist artifacts. Branch-specific editor and library workflows produce downloadable build bundles but never publish a release automatically.
 
 For each release: create the version tag, allow the tag CI/release gate to pass, create the GitHub Release from that exact tag, and use `RELEASE.md` as the release description.
 

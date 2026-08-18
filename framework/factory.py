@@ -18,6 +18,7 @@ from .audit import AuditWriter
 from .config import DataSourceConfig, OperationConfig, ProjectConfig, ResourceConfig, load_config
 from .doctor import ensure_no_errors
 from .domain import expand_feature_packs
+from .editor_api import EDITOR_PREFIX, register_editor_api
 from .observability import metrics_payload, observe
 from .protection import RequestBodyLimitMiddleware, client_ip, host_allowed, ip_allowed, request_is_https
 from .routers import register_project_routes
@@ -59,6 +60,7 @@ def _hide_internal_signature(func):
 def _hidden_route(route_decorator):
     def register(func):
         return route_decorator(_hide_internal_signature(func))
+
     return register
 
 
@@ -112,12 +114,14 @@ def _operator_authorized(request: Request) -> bool:
     if not supplied:
         return False
     import hmac
+
     return hmac.compare_digest(supplied, token)
 
 
 def create_app(*, apps_dir: Path | str | None = None) -> FastAPI:
     logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO))
-    forge = load_config(Path(apps_dir) if apps_dir is not None else None)
+    resolved_apps_dir = Path(apps_dir) if apps_dir is not None else settings.apps_dir
+    forge = load_config(resolved_apps_dir)
     for project in forge.projects:
         expand_feature_packs(project)
     diagnostics = ensure_no_errors(forge, production=settings.app_env.lower() == "production")
@@ -133,7 +137,7 @@ def create_app(*, apps_dir: Path | str | None = None) -> FastAPI:
     runtimes = runtime_manager.runtimes
     internal_url = settings.internal_database_url
     if internal_url.startswith("sqlite+aiosqlite:///"):
-        db_path = internal_url[len("sqlite+aiosqlite:///"):]
+        db_path = internal_url[len("sqlite+aiosqlite:///") :]
         if db_path and db_path != ":memory:":
             Path(db_path).parent.mkdir(parents=True, exist_ok=True)
 
@@ -177,7 +181,13 @@ def create_app(*, apps_dir: Path | str | None = None) -> FastAPI:
     )
 
     app.add_middleware(GZipMiddleware, minimum_size=next(iter(gzip_values)))
-    app.add_middleware(RequestBodyLimitMiddleware, limit_for_path=runtime_manager.body_limit_for_path)
+
+    def body_limit_for_path(path: str) -> int | None:
+        if path == EDITOR_PREFIX or path.startswith(EDITOR_PREFIX + "/"):
+            return settings.editor_max_document_bytes
+        return runtime_manager.body_limit_for_path(path)
+
+    app.add_middleware(RequestBodyLimitMiddleware, limit_for_path=body_limit_for_path)
 
     def runtime_for_path(path: str) -> ProjectRuntime | None:
         return runtime_manager.for_path(path)
@@ -221,7 +231,11 @@ def create_app(*, apps_dir: Path | str | None = None) -> FastAPI:
                     allowed_methods = {method.upper() for method in cfg.cors_methods}
                     if requested_method not in allowed_methods:
                         raise HTTPException(status_code=403, detail="CORS method is not allowed for this project")
-                    requested_headers = {value.strip().lower() for value in request.headers.get("access-control-request-headers", "").split(",") if value.strip()}
+                    requested_headers = {
+                        value.strip().lower()
+                        for value in request.headers.get("access-control-request-headers", "").split(",")
+                        if value.strip()
+                    }
                     allowed_headers = {value.lower() for value in cfg.cors_headers}
                     if "*" not in allowed_headers and not requested_headers.issubset(allowed_headers):
                         raise HTTPException(status_code=403, detail="CORS request headers are not allowed for this project")
@@ -240,12 +254,18 @@ def create_app(*, apps_dir: Path | str | None = None) -> FastAPI:
 
                 if cfg.rate_limit.enabled and cfg.rate_limit.pre_auth_enabled:
                     ip = client_ip(request, trusted_proxies)
-                    await _limiter_check(runtime, f"{cfg.slug}:preauth:ip:{ip}", cfg.rate_limit.pre_auth_requests, cfg.rate_limit.pre_auth_window_seconds, cfg.rate_limit.pre_auth_burst)
+                    await _limiter_check(
+                        runtime,
+                        f"{cfg.slug}:preauth:ip:{ip}",
+                        cfg.rate_limit.pre_auth_requests,
+                        cfg.rate_limit.pre_auth_window_seconds,
+                        cfg.rate_limit.pre_auth_burst,
+                    )
 
                 async with runtime.gate:
                     try:
                         response = await asyncio.wait_for(call_next(request), timeout=cfg.protection.request_timeout_seconds)
-                    except asyncio.TimeoutError as exc:
+                    except TimeoutError as exc:
                         raise HTTPException(status_code=504, detail="Request timed out") from exc
             else:
                 response = await call_next(request)
@@ -295,9 +315,21 @@ def create_app(*, apps_dir: Path | str | None = None) -> FastAPI:
             identity_subject = principal.subject if principal.kind != "anonymous" else f"ip:{client_ip(request, trusted_proxies)}"
             route = request.scope.get("route")
             route_template = getattr(route, "path", None) or request.url.path
-            await _limiter_check(runtime, f"{cfg.slug}:{principal.kind}:{identity_subject}:global", principal.rate_requests or cfg.rate_limit.requests, principal.rate_window_seconds or cfg.rate_limit.window_seconds, principal.rate_burst or cfg.rate_limit.burst)
+            await _limiter_check(
+                runtime,
+                f"{cfg.slug}:{principal.kind}:{identity_subject}:global",
+                principal.rate_requests or cfg.rate_limit.requests,
+                principal.rate_window_seconds or cfg.rate_limit.window_seconds,
+                principal.rate_burst or cfg.rate_limit.burst,
+            )
             if cfg.rate_limit.route_requests:
-                await _limiter_check(runtime, f"{cfg.slug}:{principal.kind}:{identity_subject}:route:{request.method}:{route_template}", cfg.rate_limit.route_requests, cfg.rate_limit.route_window_seconds or cfg.rate_limit.window_seconds, cfg.rate_limit.route_burst)
+                await _limiter_check(
+                    runtime,
+                    f"{cfg.slug}:{principal.kind}:{identity_subject}:route:{request.method}:{route_template}",
+                    cfg.rate_limit.route_requests,
+                    cfg.rate_limit.route_window_seconds or cfg.rate_limit.window_seconds,
+                    cfg.rate_limit.route_burst,
+                )
         return principal
 
     def require(principal, permission: str | None):
@@ -341,7 +373,8 @@ def create_app(*, apps_dir: Path | str | None = None) -> FastAPI:
                     continue
                 try:
                     shared[name] = "ok" if await service.ping() else "error"
-                    if shared[name] != "ok": project_ok = False
+                    if shared[name] != "ok":
+                        project_ok = False
                 except Exception as exc:
                     shared[name] = f"error:{type(exc).__name__}" if detailed else "error"
                     project_ok = False
@@ -349,7 +382,8 @@ def create_app(*, apps_dir: Path | str | None = None) -> FastAPI:
             if detailed:
                 checks[slug] = {"status": "ok" if project_ok else "degraded", "databases": databases, "mongo": mongo, "services": shared}
         payload = {"status": "ready" if all_ok else "degraded"}
-        if detailed: payload["projects"] = checks
+        if detailed:
+            payload["projects"] = checks
         if not all_ok:
             return JSONResponse(status_code=503, content=payload)
         return payload
@@ -368,5 +402,14 @@ def create_app(*, apps_dir: Path | str | None = None) -> FastAPI:
             return Response(payload, media_type=content_type)
 
     for runtime in runtimes.values():
-        register_project_routes(app=app, runtime=runtime, principal_for=principal_for, require=require, hide_internal_signature=_hide_internal_signature, hidden_route=_hidden_route, invoke_hook=_invoke_hook)
+        register_project_routes(
+            app=app,
+            runtime=runtime,
+            principal_for=principal_for,
+            require=require,
+            hide_internal_signature=_hide_internal_signature,
+            hidden_route=_hidden_route,
+            invoke_hook=_invoke_hook,
+        )
+    register_editor_api(app, apps_dir=resolved_apps_dir, settings=settings)
     return app

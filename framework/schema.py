@@ -33,8 +33,7 @@ def fragment_schema() -> dict:
     schema = project_schema()
     schema["title"] = "JSON API Forge configuration fragment"
     schema["description"] = (
-        "Partial project configuration. Files below app/NAME/config/*.json are merged "
-        "alphabetically before strict typed validation."
+        "Partial project configuration. Files below app/NAME/config/*.json are merged alphabetically before strict typed validation."
     )
     schema.pop("required", None)
     return schema

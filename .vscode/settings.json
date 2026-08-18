@@ -7,6 +7,10 @@
     {
       "fileMatch": ["/app/*/config/*.json"],
       "url": "./schemas/fragment.schema.json"
+    },
+    {
+      "fileMatch": ["/app/*/graphs/*.forgegraph.json"],
+      "url": "./schemas/editor-graph.schema.json"
     }
   ]
 }

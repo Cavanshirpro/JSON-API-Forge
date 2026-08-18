@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     editor_read_only: bool = False
     editor_allow_create_projects: bool = False
     editor_allow_hooks: bool = False
+    editor_allow_graphs: bool = False
     editor_allowed_projects: str = ""
     editor_max_document_bytes: int = Field(default=2 * 1024 * 1024, ge=1024, le=16 * 1024 * 1024)
 

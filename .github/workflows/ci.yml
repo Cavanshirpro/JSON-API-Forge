@@ -36,8 +36,8 @@ jobs:
       - name: Lint and format contract
         if: matrix.python-version == '3.13'
         run: |
-          ruff format --check framework tests scripts forge.py main.py run.py passenger_wsgi.py
-          ruff check framework tests scripts forge.py main.py run.py passenger_wsgi.py
+          ruff format --check framework clients/python tests scripts forge.py main.py run.py passenger_wsgi.py
+          ruff check framework clients/python tests scripts forge.py main.py run.py passenger_wsgi.py
       - name: Verify release manifest
         run: python scripts/check_manifest.py
       - name: Validate declarative configuration
@@ -152,6 +152,8 @@ jobs:
         run: npm install --prefix clients/typescript --no-audit --no-fund
       - name: Type-check client
         run: npm run --prefix clients/typescript typecheck
+      - name: Test client security boundaries
+        run: npm run --prefix clients/typescript test
 
   container-build:
     name: Container build

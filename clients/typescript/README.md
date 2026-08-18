@@ -4,8 +4,8 @@ This directory is a **reference client**, not a separately distributed community
 
 ```ts
 import { ForgeClient } from "./src/index.js";
-const forge = new ForgeClient({ baseUrl: "https://api.example.com/api/app1/v1", apiKey: process.env.FORGE_API_KEY });
+const forge = new ForgeClient({ baseUrl: "https://api.example.com/api/task-board/v1", apiKey: process.env.FORGE_API_KEY });
 const balance = await forge.rpc("economy.balance", { user_id: "123" });
 ```
 
-For a durable write, pass an application-level idempotency key. Keep API keys server-side whenever the client environment cannot protect secrets.
+For a durable write, pass an application-level idempotency key. Keep API keys server-side whenever the client environment cannot protect secrets. The reference client requires HTTPS (except explicit loopback development), rejects redirects/cross-origin paths, enforces a bounded response body and never accepts both API-key and bearer credentials at once.

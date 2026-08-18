@@ -1,0 +1,57 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "security": {
+    "bootstrap_enabled": true,
+    "bootstrap_admin_key": "$env:LOGISTICS_NETWORK_BOOTSTRAP_ADMIN_KEY",
+    "bootstrap_one_time": true,
+    "allow_query_api_key": false,
+    "allow_websocket_query_api_key": false
+  },
+  "roles": {
+    "admin": {
+      "permissions": [
+        "*"
+      ]
+    },
+    "operator": {
+      "permissions": [
+        "logistics.audit-events.create",
+        "logistics.audit-events.delete",
+        "logistics.audit-events.list",
+        "logistics.audit-events.read",
+        "logistics.audit-events.update",
+        "logistics.events.publish",
+        "logistics.events.subscribe",
+        "logistics.policies.create",
+        "logistics.policies.delete",
+        "logistics.policies.list",
+        "logistics.policies.read",
+        "logistics.policies.update",
+        "logistics.shipments.analytics",
+        "logistics.shipments.assign",
+        "logistics.shipments.create",
+        "logistics.shipments.delete",
+        "logistics.shipments.list",
+        "logistics.shipments.read",
+        "logistics.shipments.transition",
+        "logistics.shipments.update",
+        "logistics.workflows.create",
+        "logistics.workflows.delete",
+        "logistics.workflows.list",
+        "logistics.workflows.read",
+        "logistics.workflows.update",
+        "system.meta.read"
+      ]
+    },
+    "auditor": {
+      "permissions": [
+        "logistics.shipments.list",
+        "logistics.shipments.read",
+        "logistics.audit-events.list",
+        "logistics.audit-events.read",
+        "logistics.shipments.analytics",
+        "system.meta.read"
+      ]
+    }
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "security": {
+    "bootstrap_enabled": true,
+    "bootstrap_admin_key": "$env:LEARNING_CAMPUS_BOOTSTRAP_ADMIN_KEY",
+    "bootstrap_one_time": true,
+    "allow_query_api_key": false,
+    "allow_websocket_query_api_key": false
+  },
+  "roles": {
+    "admin": {
+      "permissions": [
+        "*"
+      ]
+    },
+    "operator": {
+      "permissions": [
+        "learning.audit-events.create",
+        "learning.audit-events.delete",
+        "learning.audit-events.list",
+        "learning.audit-events.read",
+        "learning.audit-events.update",
+        "learning.enrollments.analytics",
+        "learning.enrollments.assign",
+        "learning.enrollments.create",
+        "learning.enrollments.delete",
+        "learning.enrollments.list",
+        "learning.enrollments.read",
+        "learning.enrollments.transition",
+        "learning.enrollments.update",
+        "learning.events.publish",
+        "learning.events.subscribe",
+        "learning.policies.create",
+        "learning.policies.delete",
+        "learning.policies.list",
+        "learning.policies.read",
+        "learning.policies.update",
+        "learning.workflows.create",
+        "learning.workflows.delete",
+        "learning.workflows.list",
+        "learning.workflows.read",
+        "learning.workflows.update",
+        "system.meta.read"
+      ]
+    },
+    "auditor": {
+      "permissions": [
+        "learning.enrollments.list",
+        "learning.enrollments.read",
+        "learning.audit-events.list",
+        "learning.audit-events.read",
+        "learning.enrollments.analytics",
+        "system.meta.read"
+      ]
+    }
+  }
+}

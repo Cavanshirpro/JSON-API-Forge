@@ -2,7 +2,7 @@
 
 <p align="center"><img src="assets/branding/JSON-API-FORGE_logo.png" width="240" alt="JSON API Forge logo"></p>
 
-> This is the `exampleApps` branch. It adds five named, copy-ready applications under `app/`; use `main` for the intentionally example-free runtime tree. See [`EXAMPLE_APPS.md`](EXAMPLE_APPS.md).
+> This is the `exampleApps` branch. It adds 25 named, copy-ready applications under `app/`; use `main` for the intentionally example-free runtime tree. See [`EXAMPLE_APPS.md`](EXAMPLE_APPS.md).
 
 **Config-first. Self-hosted. Multi-project. FastAPI-native.**
 

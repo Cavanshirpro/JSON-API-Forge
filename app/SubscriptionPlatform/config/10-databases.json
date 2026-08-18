@@ -1,0 +1,9 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "databases": {
+    "primary": {
+      "url": "$env:SUBSCRIPTION_PLATFORM_DATABASE_URL:-sqlite+aiosqlite:///./data/subscription-platform.db",
+      "pool_pre_ping": true
+    }
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "security": {
+    "bootstrap_enabled": true,
+    "bootstrap_admin_key": "$env:PROJECT_OPS_BOOTSTRAP_ADMIN_KEY",
+    "bootstrap_one_time": true,
+    "allow_query_api_key": false,
+    "allow_websocket_query_api_key": false
+  },
+  "roles": {
+    "admin": {
+      "permissions": [
+        "*"
+      ]
+    },
+    "operator": {
+      "permissions": [
+        "projects.audit-events.create",
+        "projects.audit-events.delete",
+        "projects.audit-events.list",
+        "projects.audit-events.read",
+        "projects.audit-events.update",
+        "projects.events.publish",
+        "projects.events.subscribe",
+        "projects.policies.create",
+        "projects.policies.delete",
+        "projects.policies.list",
+        "projects.policies.read",
+        "projects.policies.update",
+        "projects.work_items.analytics",
+        "projects.work_items.assign",
+        "projects.work_items.create",
+        "projects.work_items.delete",
+        "projects.work_items.list",
+        "projects.work_items.read",
+        "projects.work_items.transition",
+        "projects.work_items.update",
+        "projects.workflows.create",
+        "projects.workflows.delete",
+        "projects.workflows.list",
+        "projects.workflows.read",
+        "projects.workflows.update",
+        "system.meta.read"
+      ]
+    },
+    "auditor": {
+      "permissions": [
+        "projects.work_items.list",
+        "projects.work_items.read",
+        "projects.audit-events.list",
+        "projects.audit-events.read",
+        "projects.work_items.analytics",
+        "system.meta.read"
+      ]
+    }
+  }
+}

@@ -2,13 +2,17 @@
 set -euo pipefail
 
 if [[ $# -lt 1 || $# -gt 2 ]]; then
-  echo "Usage: $0 <TaskBoard|GuildLedger|RealtimeSupport|MediaLibrary|PublicCatalog> [destination-app-directory]" >&2
+  echo "Usage: $0 <ExampleName> [destination-app-directory]" >&2
   exit 2
 fi
 
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 repository_root=$(cd -- "$script_dir/.." && pwd)
 name=$1
+if [[ ! "$name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$ ]]; then
+  echo "Example name contains unsafe characters: $name" >&2
+  exit 2
+fi
 destination_root=${2:-"$repository_root/app"}
 source_dir="$repository_root/app/$name"
 target_dir="$destination_root/$name"

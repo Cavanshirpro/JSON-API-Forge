@@ -1,0 +1,57 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "security": {
+    "bootstrap_enabled": true,
+    "bootstrap_admin_key": "$env:HIRING_PIPELINE_BOOTSTRAP_ADMIN_KEY",
+    "bootstrap_one_time": true,
+    "allow_query_api_key": false,
+    "allow_websocket_query_api_key": false
+  },
+  "roles": {
+    "admin": {
+      "permissions": [
+        "*"
+      ]
+    },
+    "operator": {
+      "permissions": [
+        "hiring.audit-events.create",
+        "hiring.audit-events.delete",
+        "hiring.audit-events.list",
+        "hiring.audit-events.read",
+        "hiring.audit-events.update",
+        "hiring.candidates.analytics",
+        "hiring.candidates.assign",
+        "hiring.candidates.create",
+        "hiring.candidates.delete",
+        "hiring.candidates.list",
+        "hiring.candidates.read",
+        "hiring.candidates.transition",
+        "hiring.candidates.update",
+        "hiring.events.publish",
+        "hiring.events.subscribe",
+        "hiring.policies.create",
+        "hiring.policies.delete",
+        "hiring.policies.list",
+        "hiring.policies.read",
+        "hiring.policies.update",
+        "hiring.workflows.create",
+        "hiring.workflows.delete",
+        "hiring.workflows.list",
+        "hiring.workflows.read",
+        "hiring.workflows.update",
+        "system.meta.read"
+      ]
+    },
+    "auditor": {
+      "permissions": [
+        "hiring.candidates.list",
+        "hiring.candidates.read",
+        "hiring.audit-events.list",
+        "hiring.audit-events.read",
+        "hiring.candidates.analytics",
+        "system.meta.read"
+      ]
+    }
+  }
+}

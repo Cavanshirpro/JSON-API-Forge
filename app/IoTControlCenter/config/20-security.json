@@ -1,0 +1,57 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "security": {
+    "bootstrap_enabled": true,
+    "bootstrap_admin_key": "$env:IOT_CONTROL_CENTER_BOOTSTRAP_ADMIN_KEY",
+    "bootstrap_one_time": true,
+    "allow_query_api_key": false,
+    "allow_websocket_query_api_key": false
+  },
+  "roles": {
+    "admin": {
+      "permissions": [
+        "*"
+      ]
+    },
+    "operator": {
+      "permissions": [
+        "iot.audit-events.create",
+        "iot.audit-events.delete",
+        "iot.audit-events.list",
+        "iot.audit-events.read",
+        "iot.audit-events.update",
+        "iot.devices.analytics",
+        "iot.devices.assign",
+        "iot.devices.create",
+        "iot.devices.delete",
+        "iot.devices.list",
+        "iot.devices.read",
+        "iot.devices.transition",
+        "iot.devices.update",
+        "iot.events.publish",
+        "iot.events.subscribe",
+        "iot.policies.create",
+        "iot.policies.delete",
+        "iot.policies.list",
+        "iot.policies.read",
+        "iot.policies.update",
+        "iot.workflows.create",
+        "iot.workflows.delete",
+        "iot.workflows.list",
+        "iot.workflows.read",
+        "iot.workflows.update",
+        "system.meta.read"
+      ]
+    },
+    "auditor": {
+      "permissions": [
+        "iot.devices.list",
+        "iot.devices.read",
+        "iot.audit-events.list",
+        "iot.audit-events.read",
+        "iot.devices.analytics",
+        "system.meta.read"
+      ]
+    }
+  }
+}

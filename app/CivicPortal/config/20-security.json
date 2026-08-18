@@ -1,0 +1,57 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "security": {
+    "bootstrap_enabled": true,
+    "bootstrap_admin_key": "$env:CIVIC_PORTAL_BOOTSTRAP_ADMIN_KEY",
+    "bootstrap_one_time": true,
+    "allow_query_api_key": false,
+    "allow_websocket_query_api_key": false
+  },
+  "roles": {
+    "admin": {
+      "permissions": [
+        "*"
+      ]
+    },
+    "operator": {
+      "permissions": [
+        "civic.audit-events.create",
+        "civic.audit-events.delete",
+        "civic.audit-events.list",
+        "civic.audit-events.read",
+        "civic.audit-events.update",
+        "civic.events.publish",
+        "civic.events.subscribe",
+        "civic.policies.create",
+        "civic.policies.delete",
+        "civic.policies.list",
+        "civic.policies.read",
+        "civic.policies.update",
+        "civic.service_requests.analytics",
+        "civic.service_requests.assign",
+        "civic.service_requests.create",
+        "civic.service_requests.delete",
+        "civic.service_requests.list",
+        "civic.service_requests.read",
+        "civic.service_requests.transition",
+        "civic.service_requests.update",
+        "civic.workflows.create",
+        "civic.workflows.delete",
+        "civic.workflows.list",
+        "civic.workflows.read",
+        "civic.workflows.update",
+        "system.meta.read"
+      ]
+    },
+    "auditor": {
+      "permissions": [
+        "civic.service_requests.list",
+        "civic.service_requests.read",
+        "civic.audit-events.list",
+        "civic.audit-events.read",
+        "civic.service_requests.analytics",
+        "system.meta.read"
+      ]
+    }
+  }
+}

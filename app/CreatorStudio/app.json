@@ -1,0 +1,9 @@
+{
+  "$schema": "../../schemas/manifest.schema.json",
+  "slug": "creator-studio",
+  "name": "Creator Studio",
+  "version": "1.0.0",
+  "api_prefix": "/api/creator-studio/v1",
+  "docs_enabled": true,
+  "audit_enabled": true
+}

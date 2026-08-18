@@ -1,0 +1,454 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "resources": [
+    {
+      "database": "primary",
+      "table": "hiring_candidates",
+      "path": "hiring/candidates",
+      "auto_create": true,
+      "columns": {
+        "id": {
+          "type": "integer",
+          "primary_key": true,
+          "nullable": false
+        },
+        "external_id": {
+          "type": "string",
+          "nullable": false,
+          "unique": true,
+          "index": true,
+          "max_length": 96
+        },
+        "name": {
+          "type": "string",
+          "nullable": false,
+          "index": true,
+          "max_length": 160
+        },
+        "status": {
+          "type": "string",
+          "nullable": false,
+          "default": "sourced",
+          "index": true,
+          "max_length": 32
+        },
+        "owner_id": {
+          "type": "string",
+          "nullable": false,
+          "index": true,
+          "max_length": 96
+        },
+        "amount": {
+          "type": "integer",
+          "nullable": false,
+          "default": 0,
+          "index": true
+        },
+        "priority": {
+          "type": "integer",
+          "nullable": false,
+          "default": 0,
+          "index": true
+        },
+        "metadata": {
+          "type": "json"
+        },
+        "created_at": {
+          "type": "datetime",
+          "index": true
+        },
+        "updated_at": {
+          "type": "datetime"
+        },
+        "deleted_at": {
+          "type": "datetime",
+          "index": true
+        }
+      },
+      "writable_fields": [
+        "external_id",
+        "name",
+        "status",
+        "owner_id",
+        "amount",
+        "priority",
+        "metadata"
+      ],
+      "allowed_filters": [
+        "status",
+        "owner_id",
+        "amount",
+        "priority",
+        "created_at"
+      ],
+      "filter_operators": [
+        "eq",
+        "ne",
+        "gt",
+        "gte",
+        "lt",
+        "lte",
+        "in",
+        "isnull"
+      ],
+      "allowed_sort": [
+        "id",
+        "name",
+        "status",
+        "amount",
+        "priority",
+        "created_at"
+      ],
+      "permissions": {
+        "list": "hiring.candidates.list",
+        "read": "hiring.candidates.read",
+        "create": "hiring.candidates.create",
+        "update": "hiring.candidates.update",
+        "delete": "hiring.candidates.delete"
+      },
+      "search_fields": [
+        "external_id",
+        "name"
+      ],
+      "soft_delete_field": "deleted_at",
+      "create_schema": {
+        "type": "object",
+        "required": [
+          "external_id",
+          "name",
+          "owner_id"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "external_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 96
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "sourced",
+              "screening",
+              "interview",
+              "offer",
+              "hired",
+              "closed"
+            ]
+          },
+          "owner_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 96
+          },
+          "amount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000000
+          },
+          "priority": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "metadata": {
+            "type": "object"
+          }
+        }
+      },
+      "update_schema": {
+        "type": "object",
+        "minProperties": 1,
+        "additionalProperties": false,
+        "properties": {
+          "external_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 96
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "sourced",
+              "screening",
+              "interview",
+              "offer",
+              "hired",
+              "closed"
+            ]
+          },
+          "owner_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 96
+          },
+          "amount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000000
+          },
+          "priority": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "metadata": {
+            "type": "object"
+          }
+        }
+      },
+      "cache": {
+        "enabled": true,
+        "list_ttl_seconds": 10,
+        "read_ttl_seconds": 30
+      }
+    },
+    {
+      "database": "primary",
+      "table": "hiring_workflows",
+      "path": "hiring/workflows",
+      "auto_create": true,
+      "columns": {
+        "id": {
+          "type": "integer",
+          "primary_key": true,
+          "nullable": false
+        },
+        "record_id": {
+          "type": "integer",
+          "nullable": false,
+          "index": true
+        },
+        "step": {
+          "type": "string",
+          "nullable": false,
+          "index": true,
+          "max_length": 64
+        },
+        "state": {
+          "type": "string",
+          "nullable": false,
+          "default": "open",
+          "index": true,
+          "max_length": 32
+        },
+        "assigned_to": {
+          "type": "string",
+          "nullable": false,
+          "index": true,
+          "max_length": 96
+        },
+        "due_at": {
+          "type": "datetime",
+          "index": true
+        },
+        "details": {
+          "type": "json"
+        },
+        "created_at": {
+          "type": "datetime",
+          "index": true
+        }
+      },
+      "writable_fields": [
+        "record_id",
+        "step",
+        "state",
+        "assigned_to",
+        "due_at",
+        "details",
+        "created_at"
+      ],
+      "allowed_filters": [
+        "record_id",
+        "step",
+        "state",
+        "assigned_to",
+        "due_at"
+      ],
+      "filter_operators": [
+        "eq",
+        "ne",
+        "gt",
+        "gte",
+        "lt",
+        "lte",
+        "in",
+        "isnull"
+      ],
+      "allowed_sort": [
+        "id",
+        "state",
+        "due_at",
+        "created_at"
+      ],
+      "permissions": {
+        "list": "hiring.workflows.list",
+        "read": "hiring.workflows.read",
+        "create": "hiring.workflows.create",
+        "update": "hiring.workflows.update",
+        "delete": "hiring.workflows.delete"
+      }
+    },
+    {
+      "database": "primary",
+      "table": "hiring_audit_events",
+      "path": "hiring/audit-events",
+      "auto_create": true,
+      "columns": {
+        "id": {
+          "type": "integer",
+          "primary_key": true,
+          "nullable": false
+        },
+        "record_id": {
+          "type": "integer",
+          "nullable": false,
+          "index": true
+        },
+        "event_type": {
+          "type": "string",
+          "nullable": false,
+          "index": true,
+          "max_length": 64
+        },
+        "actor_id": {
+          "type": "string",
+          "nullable": false,
+          "index": true,
+          "max_length": 96
+        },
+        "payload": {
+          "type": "json"
+        },
+        "idempotency_key": {
+          "type": "string",
+          "index": true,
+          "max_length": 128
+        },
+        "created_at": {
+          "type": "datetime",
+          "index": true
+        }
+      },
+      "writable_fields": [],
+      "allowed_filters": [
+        "record_id",
+        "event_type",
+        "actor_id",
+        "created_at"
+      ],
+      "filter_operators": [
+        "eq",
+        "ne",
+        "gt",
+        "gte",
+        "lt",
+        "lte",
+        "in",
+        "isnull"
+      ],
+      "allowed_sort": [
+        "id",
+        "event_type",
+        "created_at"
+      ],
+      "permissions": {
+        "list": "hiring.audit-events.list",
+        "read": "hiring.audit-events.read"
+      },
+      "allowed_actions": [
+        "list",
+        "read"
+      ]
+    },
+    {
+      "database": "primary",
+      "table": "hiring_policies",
+      "path": "hiring/policies",
+      "auto_create": true,
+      "columns": {
+        "id": {
+          "type": "integer",
+          "primary_key": true,
+          "nullable": false
+        },
+        "name": {
+          "type": "string",
+          "nullable": false,
+          "unique": true,
+          "index": true,
+          "max_length": 128
+        },
+        "enabled": {
+          "type": "boolean",
+          "nullable": false,
+          "default": true,
+          "index": true
+        },
+        "version": {
+          "type": "integer",
+          "nullable": false,
+          "default": 1
+        },
+        "rule": {
+          "type": "json",
+          "nullable": false
+        },
+        "created_at": {
+          "type": "datetime",
+          "index": true
+        },
+        "updated_at": {
+          "type": "datetime"
+        }
+      },
+      "writable_fields": [
+        "name",
+        "enabled",
+        "version",
+        "rule",
+        "created_at",
+        "updated_at"
+      ],
+      "allowed_filters": [
+        "name",
+        "enabled",
+        "version"
+      ],
+      "filter_operators": [
+        "eq",
+        "ne",
+        "gt",
+        "gte",
+        "lt",
+        "lte",
+        "in",
+        "isnull"
+      ],
+      "allowed_sort": [
+        "id",
+        "name",
+        "version",
+        "created_at"
+      ],
+      "permissions": {
+        "list": "hiring.policies.list",
+        "read": "hiring.policies.read",
+        "create": "hiring.policies.create",
+        "update": "hiring.policies.update",
+        "delete": "hiring.policies.delete"
+      }
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "databases": {
+    "primary": {
+      "url": "$env:HOTEL_OPERATIONS_DATABASE_URL:-sqlite+aiosqlite:///./data/hotel-operations.db",
+      "pool_pre_ping": true
+    }
+  }
+}

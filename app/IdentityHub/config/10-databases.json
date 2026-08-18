@@ -1,0 +1,9 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "databases": {
+    "primary": {
+      "url": "$env:IDENTITY_HUB_DATABASE_URL:-sqlite+aiosqlite:///./data/identity-hub.db",
+      "pool_pre_ping": true
+    }
+  }
+}

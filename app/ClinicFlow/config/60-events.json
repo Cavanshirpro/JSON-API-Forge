@@ -1,0 +1,21 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "event_channels": [
+    {
+      "name": "clinic-flow-updates",
+      "path": "events/clinic-flow-updates",
+      "publish_permission": "clinic.events.publish",
+      "subscribe_permission": "clinic.events.subscribe",
+      "websocket_enabled": true,
+      "sse_enabled": true,
+      "max_message_bytes": 16384,
+      "queue_size": 256,
+      "max_websocket_connections": 200,
+      "max_sse_connections": 200,
+      "heartbeat_seconds": 15,
+      "websocket_message_requests": 60,
+      "websocket_message_window_seconds": 60,
+      "websocket_message_burst": 15
+    }
+  ]
+}

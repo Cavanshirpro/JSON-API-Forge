@@ -1,0 +1,9 @@
+{
+  "$schema": "../../schemas/manifest.schema.json",
+  "slug": "iot-control-center",
+  "name": "IoT Control Center",
+  "version": "1.0.0",
+  "api_prefix": "/api/iot-control-center/v1",
+  "docs_enabled": true,
+  "audit_enabled": true
+}

@@ -1,0 +1,57 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "security": {
+    "bootstrap_enabled": true,
+    "bootstrap_admin_key": "$env:IDENTITY_HUB_BOOTSTRAP_ADMIN_KEY",
+    "bootstrap_one_time": true,
+    "allow_query_api_key": false,
+    "allow_websocket_query_api_key": false
+  },
+  "roles": {
+    "admin": {
+      "permissions": [
+        "*"
+      ]
+    },
+    "operator": {
+      "permissions": [
+        "identity.audit-events.create",
+        "identity.audit-events.delete",
+        "identity.audit-events.list",
+        "identity.audit-events.read",
+        "identity.audit-events.update",
+        "identity.events.publish",
+        "identity.events.subscribe",
+        "identity.policies.create",
+        "identity.policies.delete",
+        "identity.policies.list",
+        "identity.policies.read",
+        "identity.policies.update",
+        "identity.profiles.analytics",
+        "identity.profiles.assign",
+        "identity.profiles.create",
+        "identity.profiles.delete",
+        "identity.profiles.list",
+        "identity.profiles.read",
+        "identity.profiles.transition",
+        "identity.profiles.update",
+        "identity.workflows.create",
+        "identity.workflows.delete",
+        "identity.workflows.list",
+        "identity.workflows.read",
+        "identity.workflows.update",
+        "system.meta.read"
+      ]
+    },
+    "auditor": {
+      "permissions": [
+        "identity.profiles.list",
+        "identity.profiles.read",
+        "identity.audit-events.list",
+        "identity.audit-events.read",
+        "identity.profiles.analytics",
+        "system.meta.read"
+      ]
+    }
+  }
+}

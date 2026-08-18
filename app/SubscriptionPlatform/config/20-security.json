@@ -1,0 +1,57 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "security": {
+    "bootstrap_enabled": true,
+    "bootstrap_admin_key": "$env:SUBSCRIPTION_PLATFORM_BOOTSTRAP_ADMIN_KEY",
+    "bootstrap_one_time": true,
+    "allow_query_api_key": false,
+    "allow_websocket_query_api_key": false
+  },
+  "roles": {
+    "admin": {
+      "permissions": [
+        "*"
+      ]
+    },
+    "operator": {
+      "permissions": [
+        "subscriptions.accounts.analytics",
+        "subscriptions.accounts.assign",
+        "subscriptions.accounts.create",
+        "subscriptions.accounts.delete",
+        "subscriptions.accounts.list",
+        "subscriptions.accounts.read",
+        "subscriptions.accounts.transition",
+        "subscriptions.accounts.update",
+        "subscriptions.audit-events.create",
+        "subscriptions.audit-events.delete",
+        "subscriptions.audit-events.list",
+        "subscriptions.audit-events.read",
+        "subscriptions.audit-events.update",
+        "subscriptions.events.publish",
+        "subscriptions.events.subscribe",
+        "subscriptions.policies.create",
+        "subscriptions.policies.delete",
+        "subscriptions.policies.list",
+        "subscriptions.policies.read",
+        "subscriptions.policies.update",
+        "subscriptions.workflows.create",
+        "subscriptions.workflows.delete",
+        "subscriptions.workflows.list",
+        "subscriptions.workflows.read",
+        "subscriptions.workflows.update",
+        "system.meta.read"
+      ]
+    },
+    "auditor": {
+      "permissions": [
+        "subscriptions.accounts.list",
+        "subscriptions.accounts.read",
+        "subscriptions.audit-events.list",
+        "subscriptions.audit-events.read",
+        "subscriptions.accounts.analytics",
+        "system.meta.read"
+      ]
+    }
+  }
+}

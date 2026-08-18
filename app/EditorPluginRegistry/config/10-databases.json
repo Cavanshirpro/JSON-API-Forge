@@ -1,0 +1,9 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "databases": {
+    "primary": {
+      "url": "$env:EDITOR_PLUGIN_REGISTRY_DATABASE_URL:-sqlite+aiosqlite:///./data/editor-plugin-registry.db",
+      "pool_pre_ping": true
+    }
+  }
+}

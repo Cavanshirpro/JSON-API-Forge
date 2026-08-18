@@ -13,6 +13,7 @@ EDITOR_TRUSTED_PROXY_CIDRS=10.0.0.0/8
 EDITOR_READ_ONLY=false
 EDITOR_ALLOW_CREATE_PROJECTS=false
 EDITOR_ALLOW_HOOKS=false
+EDITOR_ALLOW_GRAPHS=false
 EDITOR_ALLOWED_PROJECTS=Billing API,Internal Portal
 EDITOR_MAX_DOCUMENT_BYTES=2097152
 ```
@@ -21,7 +22,7 @@ Forwarded protocol/IP headers are used only when the direct peer belongs to `EDI
 
 ## File boundary
 
-The default writable set is `app.json` plus direct `config/*.json` fragments. Python `hooks/*.py` requires the explicit hook policy. `.env`, secrets, arbitrary source files, symlinks and traversal paths are never editor documents.
+The default writable set is `app.json` plus direct `config/*.json` fragments. Python `hooks/*.py` and Blueprint-style `graphs/*.forgegraph.json` each require their own explicit policy. Graph documents are bounded, schema-versioned editor metadata: node/edge identity, target paths, fan-in and acyclic execution constraints are validated server-side, and a graph never bypasses normal merged-project validation for the JSON it generates. `.env`, secrets, arbitrary source files, symlinks and traversal paths are never editor documents.
 
 Reads return a SHA-256 revision. Writes must send that revision (or `new` for a new allowed document). A stale revision returns HTTP 409. JSON edits are staged into a private project copy and the complete merged configuration is validated before an atomic replacement; invalid edits return HTTP 422 without changing the live file.
 

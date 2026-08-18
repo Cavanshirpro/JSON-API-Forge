@@ -132,6 +132,70 @@ def test_editor_control_plane_validates_conflicts_and_rolls_back(tmp_path):
     asyncio.run(run())
 
 
+def test_editor_graph_documents_are_policy_gated_and_structurally_validated(tmp_path):
+    apps = tmp_path / "app"
+    project = _write_project(apps)
+    (project / "graphs").mkdir()
+    valid_graph = {
+        "$schema": "../../../schemas/editor-graph.schema.json",
+        "schema_version": 1,
+        "target_document": "config/90-generated.json",
+        "nodes": [
+            {"id": "trigger", "type": "flow.operation", "title": "Create order", "x": 0, "y": 0, "properties": {}},
+            {"id": "statement", "type": "sql.statement", "title": "Insert row", "x": 300, "y": 0, "properties": {}},
+        ],
+        "edges": [
+            {
+                "id": "edge-1",
+                "from_node": "trigger",
+                "from_port": "exec",
+                "to_node": "statement",
+                "to_port": "exec",
+            }
+        ],
+    }
+
+    async def run():
+        blocked = EditorControlPlane(apps, _editor_settings())
+        with pytest.raises(HTTPException) as denied:
+            await blocked.write_document(
+                "Notes",
+                "graphs/order-flow.forgegraph.json",
+                DocumentWrite(content=json.dumps(valid_graph), expected_sha256="new"),
+            )
+        assert denied.value.status_code == 403
+
+        enabled = EditorControlPlane(apps, _editor_settings(editor_allow_graphs=True))
+        digest = await enabled.write_document(
+            "Notes",
+            "graphs/order-flow.forgegraph.json",
+            DocumentWrite(content=json.dumps(valid_graph), expected_sha256="new"),
+        )
+        assert len(digest) == 64
+        assert "graphs/order-flow.forgegraph.json" in {item["path"] for item in enabled.list_documents("Notes")}
+
+        cyclic = json.loads(json.dumps(valid_graph))
+        cyclic["edges"].append(
+            {
+                "id": "edge-2",
+                "from_node": "statement",
+                "from_port": "exec",
+                "to_node": "trigger",
+                "to_port": "exec",
+            }
+        )
+        with pytest.raises(HTTPException, match="acyclic") as invalid:
+            await enabled.write_document(
+                "Notes",
+                "graphs/cycle.forgegraph.json",
+                DocumentWrite(content=json.dumps(cyclic), expected_sha256="new"),
+            )
+        assert invalid.value.status_code == 422
+        assert not (project / "graphs" / "cycle.forgegraph.json").exists()
+
+    asyncio.run(run())
+
+
 def test_editor_api_uses_independent_token_and_reports_policy(tmp_path):
     apps = tmp_path / "app"
     _write_project(apps)
@@ -143,6 +207,8 @@ def test_editor_api_uses_independent_token_and_reports_policy(tmp_path):
         response = client.get("/__forge/editor/v1/capabilities", headers={"X-Forge-Editor-Token": EDITOR_TOKEN})
         assert response.status_code == 200
         assert response.json()["optimistic_concurrency"] == "sha256"
+        assert response.json()["allow_graphs"] is False
+        assert response.json()["graph_schema_version"] == 1
         assert (
             client.get("/__forge/editor/v1/projects", headers={"X-Forge-Editor-Token": EDITOR_TOKEN}).json()["projects"][0]["slug"]
             == "notes"

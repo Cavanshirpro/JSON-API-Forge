@@ -26,6 +26,9 @@ EDITOR_PREFIX = "/__forge/editor/v1"
 _PROJECT_NAME = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9 ._-]{0,62}[A-Za-z0-9])?$")
 _PROJECT_SLUG = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$")
 _RESERVED = frozenset({"config", "data", "hooks", "plugins", "schemas"})
+_GRAPH_FILE = re.compile(r"^[a-z0-9](?:[a-z0-9._-]{0,94}[a-z0-9])?\.forgegraph\.json$")
+_GRAPH_TOKEN = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9._:-]{0,126}[A-Za-z0-9])?$")
+_GRAPH_TYPE = re.compile(r"^[a-z][a-z0-9]*(?:[._-][a-z0-9]+){1,7}$")
 
 
 class EditorModel(BaseModel):
@@ -61,7 +64,7 @@ def _project_name(name: str) -> str:
     return name
 
 
-def _document_path(project_dir: Path, raw: str, *, allow_hooks: bool) -> tuple[Path, str]:
+def _document_path(project_dir: Path, raw: str, *, allow_hooks: bool, allow_graphs: bool) -> tuple[Path, str]:
     if not raw or "\\" in raw or "\0" in raw:
         raise HTTPException(status_code=400, detail="Invalid document path")
     relative = PurePosixPath(raw)
@@ -69,6 +72,10 @@ def _document_path(project_dir: Path, raw: str, *, allow_hooks: bool) -> tuple[P
         raise HTTPException(status_code=400, detail="Invalid document path")
     normalized = relative.as_posix()
     allowed = normalized == "app.json" or (len(relative.parts) == 2 and relative.parts[0] == "config" and relative.suffix == ".json")
+    if allow_graphs:
+        allowed = allowed or (
+            len(relative.parts) == 2 and relative.parts[0] == "graphs" and _GRAPH_FILE.fullmatch(relative.name) is not None
+        )
     if allow_hooks:
         allowed = allowed or (
             len(relative.parts) == 2 and relative.parts[0] == "hooks" and relative.suffix == ".py" and not relative.name.startswith(".")
@@ -81,6 +88,116 @@ def _document_path(project_dir: Path, raw: str, *, allow_hooks: bool) -> tuple[P
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="Invalid document path") from exc
     return target, normalized
+
+
+def _graph_error(message: str) -> None:
+    raise HTTPException(status_code=422, detail=f"Invalid Forge graph: {message}")
+
+
+def _validate_graph_document(value: object) -> None:
+    if not isinstance(value, dict):
+        _graph_error("root must be an object")
+    allowed_root = {"$schema", "schema_version", "target_document", "nodes", "edges", "metadata"}
+    unknown_root = set(value) - allowed_root
+    if unknown_root:
+        _graph_error(f"unknown root fields: {', '.join(sorted(unknown_root))}")
+    if value.get("schema_version") != 1:
+        _graph_error("schema_version must be 1")
+    target = value.get("target_document")
+    if not isinstance(target, str):
+        _graph_error("target_document must be a config/*.json path")
+    target_path = PurePosixPath(target)
+    if (
+        target_path.is_absolute()
+        or len(target_path.parts) != 2
+        or target_path.parts[0] != "config"
+        or target_path.suffix != ".json"
+        or any(part in {"", ".", ".."} for part in target_path.parts)
+        or "\\" in target
+    ):
+        _graph_error("target_document must be a direct config/*.json path")
+    nodes = value.get("nodes")
+    edges = value.get("edges")
+    if not isinstance(nodes, list) or len(nodes) > 500:
+        _graph_error("nodes must be an array with at most 500 entries")
+    if not isinstance(edges, list) or len(edges) > 2000:
+        _graph_error("edges must be an array with at most 2000 entries")
+
+    node_ids: set[str] = set()
+    adjacency: dict[str, set[str]] = {}
+    for index, node in enumerate(nodes):
+        if not isinstance(node, dict):
+            _graph_error(f"node {index} must be an object")
+        unknown = set(node) - {"id", "type", "title", "x", "y", "properties"}
+        if unknown:
+            _graph_error(f"node {index} has unknown fields: {', '.join(sorted(unknown))}")
+        node_id = node.get("id")
+        node_type = node.get("type")
+        if not isinstance(node_id, str) or _GRAPH_TOKEN.fullmatch(node_id) is None:
+            _graph_error(f"node {index} has an unsafe id")
+        if node_id in node_ids:
+            _graph_error(f"duplicate node id: {node_id}")
+        if not isinstance(node_type, str) or _GRAPH_TYPE.fullmatch(node_type) is None:
+            _graph_error(f"node {node_id} has an unsafe type")
+        title = node.get("title", "")
+        if not isinstance(title, str) or len(title) > 160 or any(character in title for character in "\r\n\0"):
+            _graph_error(f"node {node_id} has an invalid title")
+        for coordinate in ("x", "y"):
+            raw_coordinate = node.get(coordinate, 0)
+            if not isinstance(raw_coordinate, (int, float)) or isinstance(raw_coordinate, bool) or abs(raw_coordinate) > 1_000_000:
+                _graph_error(f"node {node_id} has an invalid {coordinate} coordinate")
+        if not isinstance(node.get("properties", {}), dict):
+            _graph_error(f"node {node_id} properties must be an object")
+        node_ids.add(node_id)
+        adjacency[node_id] = set()
+
+    edge_ids: set[str] = set()
+    incoming: set[tuple[str, str]] = set()
+    pairs: set[tuple[str, str, str, str]] = set()
+    for index, edge in enumerate(edges):
+        if not isinstance(edge, dict):
+            _graph_error(f"edge {index} must be an object")
+        unknown = set(edge) - {"id", "from_node", "from_port", "to_node", "to_port"}
+        if unknown:
+            _graph_error(f"edge {index} has unknown fields: {', '.join(sorted(unknown))}")
+        fields = {name: edge.get(name) for name in ("id", "from_node", "from_port", "to_node", "to_port")}
+        if any(not isinstance(item, str) or _GRAPH_TOKEN.fullmatch(item) is None for item in fields.values()):
+            _graph_error(f"edge {index} contains an unsafe id or port")
+        edge_id = fields["id"]
+        from_node = fields["from_node"]
+        to_node = fields["to_node"]
+        if edge_id in edge_ids:
+            _graph_error(f"duplicate edge id: {edge_id}")
+        if from_node not in node_ids or to_node not in node_ids:
+            _graph_error(f"edge {edge_id} references a missing node")
+        if from_node == to_node:
+            _graph_error(f"edge {edge_id} may not connect a node to itself")
+        incoming_key = (to_node, fields["to_port"])
+        if incoming_key in incoming:
+            _graph_error(f"input {to_node}:{fields['to_port']} has more than one connection")
+        pair = (from_node, fields["from_port"], to_node, fields["to_port"])
+        if pair in pairs:
+            _graph_error(f"edge {edge_id} duplicates an existing connection")
+        edge_ids.add(edge_id)
+        incoming.add(incoming_key)
+        pairs.add(pair)
+        adjacency[from_node].add(to_node)
+
+    indegree = {node_id: 0 for node_id in node_ids}
+    for targets in adjacency.values():
+        for target_node in targets:
+            indegree[target_node] += 1
+    ready = [node_id for node_id, degree in indegree.items() if degree == 0]
+    visited = 0
+    while ready:
+        current = ready.pop()
+        visited += 1
+        for target_node in adjacency[current]:
+            indegree[target_node] -= 1
+            if indegree[target_node] == 0:
+                ready.append(target_node)
+    if visited != len(node_ids):
+        _graph_error("execution connections must form an acyclic graph")
 
 
 class EditorControlPlane:
@@ -136,6 +253,8 @@ class EditorControlPlane:
         candidates = [project / "app.json", *sorted((project / "config").glob("*.json"))]
         if self.settings.editor_allow_hooks:
             candidates.extend(sorted((project / "hooks").glob("*.py")))
+        if self.settings.editor_allow_graphs:
+            candidates.extend(sorted((project / "graphs").glob("*.forgegraph.json")))
         documents = []
         for path in candidates:
             if not path.is_file() or path.is_symlink():
@@ -153,7 +272,12 @@ class EditorControlPlane:
 
     def read_document(self, project_name: str, raw_path: str) -> tuple[str, str]:
         project = self._project_dir(project_name)
-        path, _ = _document_path(project, raw_path, allow_hooks=self.settings.editor_allow_hooks)
+        path, _ = _document_path(
+            project,
+            raw_path,
+            allow_hooks=self.settings.editor_allow_hooks,
+            allow_graphs=self.settings.editor_allow_graphs,
+        )
         if not path.is_file() or path.is_symlink():
             raise HTTPException(status_code=404, detail="Document not found")
         data = path.read_bytes()
@@ -182,7 +306,12 @@ class EditorControlPlane:
         if len(data) > self.settings.editor_max_document_bytes:
             raise HTTPException(status_code=413, detail="Document exceeds the editor policy limit")
         project = self._project_dir(project_name)
-        target, normalized = _document_path(project, raw_path, allow_hooks=self.settings.editor_allow_hooks)
+        target, normalized = _document_path(
+            project,
+            raw_path,
+            allow_hooks=self.settings.editor_allow_hooks,
+            allow_graphs=self.settings.editor_allow_graphs,
+        )
         if normalized.endswith(".json"):
             try:
                 parsed = json.loads(payload.content)
@@ -190,6 +319,8 @@ class EditorControlPlane:
                 raise HTTPException(status_code=422, detail=f"Invalid JSON: {exc.msg} at line {exc.lineno}, column {exc.colno}") from exc
             if not isinstance(parsed, dict):
                 raise HTTPException(status_code=422, detail="JSON document root must be an object")
+            if normalized.startswith("graphs/"):
+                _validate_graph_document(parsed)
 
         async with self._write_lock:
             exists = target.is_file() and not target.is_symlink()
@@ -205,7 +336,12 @@ class EditorControlPlane:
             with tempfile.TemporaryDirectory(prefix="forge-editor-") as temp_root:
                 staged = Path(temp_root) / project.name
                 shutil.copytree(project, staged, symlinks=False)
-                staged_target, _ = _document_path(staged, normalized, allow_hooks=self.settings.editor_allow_hooks)
+                staged_target, _ = _document_path(
+                    staged,
+                    normalized,
+                    allow_hooks=self.settings.editor_allow_hooks,
+                    allow_graphs=self.settings.editor_allow_graphs,
+                )
                 staged_target.parent.mkdir(parents=True, exist_ok=True)
                 staged_target.write_bytes(data)
                 try:
@@ -246,6 +382,7 @@ class EditorControlPlane:
             try:
                 (temporary / "config").mkdir()
                 (temporary / "hooks").mkdir()
+                (temporary / "graphs").mkdir()
                 (temporary / "app.json").write_text(
                     json.dumps(
                         {
@@ -306,6 +443,8 @@ def register_editor_api(app: FastAPI, *, apps_dir: Path, settings: Settings) -> 
             "read_only": settings.editor_read_only,
             "allow_create_projects": settings.editor_allow_create_projects,
             "allow_hooks": settings.editor_allow_hooks,
+            "allow_graphs": settings.editor_allow_graphs,
+            "graph_schema_version": 1,
             "max_document_bytes": settings.editor_max_document_bytes,
             "authentication": "X-Forge-Editor-Token",
             "optimistic_concurrency": "sha256",

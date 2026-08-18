@@ -5,19 +5,30 @@ import hashlib
 import hmac
 import json
 import logging
+import mimetypes
 import os
 import re
 import shutil
 import tempfile
+import time
+import uuid
+from datetime import datetime
 from pathlib import Path, PurePosixPath
 
 from dotenv import dotenv_values
-from fastapi import APIRouter, FastAPI, HTTPException, Request, Response, status
-from pydantic import BaseModel, ConfigDict, Field
+from fastapi import APIRouter, FastAPI, HTTPException, Request, Response, UploadFile, WebSocket, WebSocketDisconnect, status
+from fastapi.responses import FileResponse, HTMLResponse
+from filelock import FileLock
+from filelock import Timeout as FileLockTimeout
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .config import _load_project_dir
 from .doctor import is_weak_secret
-from .protection import ip_allowed, request_is_https
+from .editor_call_client import call_client_page, parse_ice_servers
+from .editor_database import browse_rows, database_catalog
+from .editor_identity import EditorAccess, EditorIdentityStore, EditorPrincipal
+from .protection import client_ip, host_allowed, ip_allowed, request_is_https
+from .runtime import ProjectRuntime
 from .settings import Settings
 
 log = logging.getLogger("json_api_forge.editor")
@@ -39,10 +50,108 @@ class DocumentWrite(EditorModel):
     content: str
     expected_sha256: str = Field(min_length=3, max_length=64)
 
+    @field_validator("expected_sha256")
+    @classmethod
+    def expected_revision_is_exact(cls, value: str) -> str:
+        if value != "new" and re.fullmatch(r"[0-9a-f]{64}", value) is None:
+            raise ValueError("expected_sha256 must be 'new' or a lowercase SHA-256 digest")
+        return value
+
 
 class ProjectCreate(EditorModel):
     name: str
     slug: str
+
+
+class FounderCreate(EditorModel):
+    username: str = Field(min_length=3, max_length=32)
+    password: str = Field(min_length=1, max_length=256)
+    display_name: str = Field(min_length=1, max_length=80)
+
+
+class LoginRequest(EditorModel):
+    username: str = Field(min_length=1, max_length=64)
+    password: str = Field(min_length=1, max_length=256)
+
+
+class InvitationRegistration(FounderCreate):
+    invitation: str = Field(min_length=32, max_length=512)
+
+
+class ProfileUpdate(EditorModel):
+    display_name: str | None = Field(default=None, max_length=80)
+    title: str | None = Field(default=None, max_length=120)
+    bio: str | None = Field(default=None, max_length=2000)
+    timezone: str | None = Field(default=None, max_length=64)
+    status: str | None = Field(default=None, max_length=160)
+
+
+class RoleWrite(EditorModel):
+    name: str = Field(min_length=1, max_length=64)
+    rank: int = Field(ge=1, le=999)
+    permissions: list[str] = Field(max_length=100)
+    document_allow: list[str] = Field(default_factory=list, max_length=100)
+    document_deny: list[str] = Field(default_factory=list, max_length=100)
+    database_allow: list[str] = Field(default_factory=list, max_length=100)
+
+
+class InvitationCreate(EditorModel):
+    memberships: list[dict[str, str]] = Field(min_length=1, max_length=32)
+    expires_hours: int = Field(default=24, ge=1, le=168)
+
+
+class MemberUpdate(EditorModel):
+    memberships: list[dict[str, str]] = Field(max_length=32)
+    active: bool = True
+
+
+class AreaCreate(EditorModel):
+    project: str
+    name: str = Field(min_length=1, max_length=96)
+    description: str = Field(default="", max_length=500)
+    visibility: str = "open"
+    minimum_rank: int = Field(default=0, ge=0, le=999)
+    allowed_role_ids: list[str] = Field(default_factory=list, max_length=100)
+
+
+class MessageCreate(EditorModel):
+    body: str = Field(min_length=1)
+    kind: str = "message"
+
+
+class NoteCreate(EditorModel):
+    project: str
+    area_id: str | None = None
+    title: str = Field(min_length=1, max_length=160)
+    body: str = ""
+    visibility: str = "open"
+    minimum_rank: int = Field(default=0, ge=0, le=999)
+    allowed_role_ids: list[str] = Field(default_factory=list, max_length=100)
+
+
+class CallCreate(EditorModel):
+    area_id: str
+    mode: str
+
+
+class _ActionLimiter:
+    def __init__(self) -> None:
+        self._lock = asyncio.Lock()
+        self._buckets: dict[str, tuple[float, int]] = {}
+
+    async def check(self, key: str, *, limit: int, window_seconds: int) -> None:
+        now = time.monotonic()
+        async with self._lock:
+            started, count = self._buckets.get(key, (now, 0))
+            if now - started >= window_seconds:
+                started, count = now, 0
+            if count >= limit:
+                retry = max(1, int(window_seconds - (now - started)))
+                raise HTTPException(status_code=429, detail="Editor action rate limit exceeded", headers={"Retry-After": str(retry)})
+            self._buckets[key] = (started, count + 1)
+            if len(self._buckets) > 10_000:
+                cutoff = now - max(window_seconds, 300)
+                self._buckets = {name: value for name, value in self._buckets.items() if value[0] >= cutoff}
 
 
 def _csv(value: str) -> list[str]:
@@ -201,10 +310,12 @@ def _validate_graph_document(value: object) -> None:
 
 
 class EditorControlPlane:
-    def __init__(self, apps_dir: Path, settings: Settings):
+    def __init__(self, apps_dir: Path, settings: Settings, runtimes: dict[str, ProjectRuntime] | None = None):
         self.apps_dir = apps_dir.resolve()
         self.settings = settings
+        self.runtimes = runtimes or {}
         self._write_lock = asyncio.Lock()
+        self._lock_dir = self.apps_dir.parent / ".forge-editor-locks"
 
     def _project_dir(self, name: str, *, must_exist: bool = True) -> Path:
         name = _project_name(name)
@@ -219,15 +330,72 @@ class EditorControlPlane:
             raise HTTPException(status_code=404, detail="Project not found") from exc
         return project
 
-    async def authorize(self, request: Request) -> None:
+    async def authorize_network(self, request: Request | WebSocket) -> None:
         trusted = _csv(self.settings.editor_trusted_proxy_cidrs)
         if self.settings.editor_require_https and not request_is_https(request, trusted):
             raise HTTPException(status_code=400, detail="HTTPS is required for the editor API")
         if not ip_allowed(request, _csv(self.settings.editor_allowed_ips), [], trusted):
             raise HTTPException(status_code=403, detail="Client IP is not allowed for the editor API")
+        if not host_allowed(request.headers.get("host"), _csv(self.settings.editor_trusted_hosts)):
+            raise HTTPException(status_code=400, detail="Host is not allowed for the editor API")
+
+    def legacy_principal(self, request: Request) -> EditorPrincipal | None:
+        if not self.settings.editor_legacy_token_enabled:
+            return None
         supplied = request.headers.get("X-Forge-Editor-Token", "")
-        if not supplied or len(supplied) > 512 or not hmac.compare_digest(supplied, self.settings.editor_token):
-            raise HTTPException(status_code=401, detail="Editor authentication required")
+        if supplied and len(supplied) <= 512 and hmac.compare_digest(supplied, self.settings.editor_token):
+            return EditorPrincipal("legacy-operator", "legacy-operator", "Legacy operator", True, None, legacy=True)
+        return None
+
+    def runtime_for_project(self, project_name: str) -> ProjectRuntime:
+        project = self._project_dir(project_name)
+        try:
+            manifest = json.loads((project / "app.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail="Project manifest could not be read") from exc
+        runtime = self.runtimes.get(str(manifest.get("slug", "")))
+        if runtime is None:
+            raise HTTPException(status_code=503, detail="Project runtime is not ready")
+        return runtime
+
+    def _assert_no_symlinks(self, project: Path) -> None:
+        for directory in (project, project / "config", project / "hooks", project / "graphs"):
+            if directory.exists() and directory.is_symlink():
+                raise HTTPException(status_code=409, detail="Editor projects may not contain symlinked control directories")
+        candidates = [project / "app.json"]
+        for directory, pattern in ((project / "config", "*.json"), (project / "hooks", "*.py"), (project / "graphs", "*.forgegraph.json")):
+            if directory.is_dir():
+                candidates.extend(directory.glob(pattern))
+        if any(path.is_symlink() for path in candidates):
+            raise HTTPException(status_code=409, detail="Editor projects may not contain symlinked documents")
+
+    def _stage_project(self, project: Path, destination: Path) -> None:
+        self._assert_no_symlinks(project)
+        destination.mkdir(parents=True)
+        manifest = project / "app.json"
+        if not manifest.is_file():
+            raise HTTPException(status_code=404, detail="Project manifest not found")
+        shutil.copyfile(manifest, destination / "app.json", follow_symlinks=False)
+        for folder, pattern in (("config", "*.json"), ("hooks", "*.py"), ("graphs", "*.forgegraph.json")):
+            source_dir = project / folder
+            target_dir = destination / folder
+            target_dir.mkdir()
+            if not source_dir.is_dir():
+                continue
+            for source in source_dir.glob(pattern):
+                if not source.is_file() or source.is_symlink():
+                    continue
+                shutil.copyfile(source, target_dir / source.name, follow_symlinks=False)
+
+    async def _acquire_project_lock(self, project: Path) -> FileLock:
+        self._lock_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+        name = hashlib.sha256(str(project).encode("utf-8")).hexdigest() + ".lock"
+        lock = FileLock(self._lock_dir / name, timeout=10)
+        try:
+            await asyncio.to_thread(lock.acquire)
+        except FileLockTimeout as exc:
+            raise HTTPException(status_code=503, detail="Project is busy; retry the save", headers={"Retry-After": "1"}) from exc
+        return lock
 
     def list_projects(self) -> list[dict]:
         if not self.apps_dir.exists():
@@ -250,6 +418,7 @@ class EditorControlPlane:
 
     def list_documents(self, project_name: str) -> list[dict]:
         project = self._project_dir(project_name)
+        self._assert_no_symlinks(project)
         candidates = [project / "app.json", *sorted((project / "config").glob("*.json"))]
         if self.settings.editor_allow_hooks:
             candidates.extend(sorted((project / "hooks").glob("*.py")))
@@ -272,6 +441,7 @@ class EditorControlPlane:
 
     def read_document(self, project_name: str, raw_path: str) -> tuple[str, str]:
         project = self._project_dir(project_name)
+        self._assert_no_symlinks(project)
         path, _ = _document_path(
             project,
             raw_path,
@@ -280,9 +450,10 @@ class EditorControlPlane:
         )
         if not path.is_file() or path.is_symlink():
             raise HTTPException(status_code=404, detail="Document not found")
-        data = path.read_bytes()
-        if len(data) > self.settings.editor_max_document_bytes:
+        size = path.stat(follow_symlinks=False).st_size
+        if size > self.settings.editor_max_document_bytes:
             raise HTTPException(status_code=413, detail="Document exceeds the editor policy limit")
+        data = path.read_bytes()
         try:
             return data.decode("utf-8"), _digest(data)
         except UnicodeDecodeError as exc:
@@ -323,43 +494,54 @@ class EditorControlPlane:
                 _validate_graph_document(parsed)
 
         async with self._write_lock:
-            exists = target.is_file() and not target.is_symlink()
-            if exists:
-                current = target.read_bytes()
-                if payload.expected_sha256 != _digest(current):
-                    raise HTTPException(status_code=409, detail="Document changed on the server; reload before saving")
-            elif payload.expected_sha256 != "new":
-                raise HTTPException(status_code=409, detail="Document no longer exists; reload before saving")
-            elif target.exists():
-                raise HTTPException(status_code=409, detail="Document target is not a regular file")
-
-            with tempfile.TemporaryDirectory(prefix="forge-editor-") as temp_root:
-                staged = Path(temp_root) / project.name
-                shutil.copytree(project, staged, symlinks=False)
-                staged_target, _ = _document_path(
-                    staged,
-                    normalized,
-                    allow_hooks=self.settings.editor_allow_hooks,
-                    allow_graphs=self.settings.editor_allow_graphs,
-                )
-                staged_target.parent.mkdir(parents=True, exist_ok=True)
-                staged_target.write_bytes(data)
-                try:
-                    _load_project_dir(staged, dotenv=dotenv_values(self.apps_dir.parent / ".env"))
-                except RuntimeError as exc:
-                    raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-            target.parent.mkdir(parents=True, exist_ok=True)
-            fd, temporary_name = tempfile.mkstemp(prefix=f".{target.name}.", dir=target.parent)
-            temporary = Path(temporary_name)
+            lock = await self._acquire_project_lock(project)
             try:
-                with os.fdopen(fd, "wb") as handle:
-                    handle.write(data)
-                    handle.flush()
-                    os.fsync(handle.fileno())
-                os.replace(temporary, target)
+                self._assert_no_symlinks(project)
+                exists = target.is_file() and not target.is_symlink()
+                if exists:
+                    current = target.read_bytes()
+                    if payload.expected_sha256 != _digest(current):
+                        raise HTTPException(status_code=409, detail="Document changed on the server; reload before saving")
+                elif payload.expected_sha256 != "new":
+                    raise HTTPException(status_code=409, detail="Document no longer exists; reload before saving")
+                elif target.exists():
+                    raise HTTPException(status_code=409, detail="Document target is not a regular file")
+
+                with tempfile.TemporaryDirectory(prefix="forge-editor-") as temp_root:
+                    staged = Path(temp_root) / project.name
+                    self._stage_project(project, staged)
+                    staged_target, _ = _document_path(
+                        staged,
+                        normalized,
+                        allow_hooks=self.settings.editor_allow_hooks,
+                        allow_graphs=self.settings.editor_allow_graphs,
+                    )
+                    staged_target.parent.mkdir(parents=True, exist_ok=True)
+                    staged_target.write_bytes(data)
+                    try:
+                        _load_project_dir(staged, dotenv=dotenv_values(self.apps_dir.parent / ".env"))
+                    except RuntimeError as exc:
+                        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+                target.parent.mkdir(parents=True, exist_ok=True)
+                fd, temporary_name = tempfile.mkstemp(prefix=f".{target.name}.", dir=target.parent)
+                temporary = Path(temporary_name)
+                try:
+                    with os.fdopen(fd, "wb") as handle:
+                        handle.write(data)
+                        handle.flush()
+                        os.fsync(handle.fileno())
+                    os.replace(temporary, target)
+                    if hasattr(os, "O_DIRECTORY"):
+                        directory_fd = os.open(target.parent, os.O_RDONLY | os.O_DIRECTORY)
+                        try:
+                            os.fsync(directory_fd)
+                        finally:
+                            os.close(directory_fd)
+                finally:
+                    temporary.unlink(missing_ok=True)
             finally:
-                temporary.unlink(missing_ok=True)
+                await asyncio.to_thread(lock.release)
         digest = _digest(data)
         log.info("editor write project=%s document=%s client_policy=authorized sha256=%s", project.name, normalized, digest[:12])
         return digest
@@ -421,77 +603,694 @@ class EditorControlPlane:
         return {"directory": payload.name, "name": payload.name, "slug": payload.slug}
 
 
-def register_editor_api(app: FastAPI, *, apps_dir: Path, settings: Settings) -> None:
+def register_editor_api(
+    app: FastAPI,
+    *,
+    apps_dir: Path,
+    settings: Settings,
+    runtimes: dict[str, ProjectRuntime] | None = None,
+) -> None:
     if not settings.editor_api_enabled:
         return
     if is_weak_secret(settings.editor_token, minimum_length=32):
         raise RuntimeError("EDITOR_API_ENABLED=true requires a strong, independent EDITOR_TOKEN of at least 32 characters")
     if settings.app_env.casefold() == "production" and not settings.editor_require_https:
         raise RuntimeError("Production editor API requires EDITOR_REQUIRE_HTTPS=true")
+    if settings.app_env.casefold() == "production" and settings.editor_legacy_token_enabled:
+        raise RuntimeError("Production editor API does not allow EDITOR_LEGACY_TOKEN_ENABLED=true")
+    if settings.editor_calls_enabled and not settings.editor_collaboration_enabled:
+        raise RuntimeError("EDITOR_CALLS_ENABLED requires EDITOR_COLLABORATION_ENABLED")
+    ice_servers = parse_ice_servers(settings.editor_call_ice_servers_json) if settings.editor_calls_enabled else []
 
-    control = EditorControlPlane(apps_dir, settings)
+    control = EditorControlPlane(apps_dir, settings, runtimes)
     router = APIRouter(prefix=EDITOR_PREFIX, dependencies=[])
+    action_limiter = _ActionLimiter()
 
-    async def authorized(request: Request) -> None:
-        await control.authorize(request)
+    def store_for(connection: Request | WebSocket) -> EditorIdentityStore:
+        engine = getattr(connection.app.state, "internal_engine", None)
+        if engine is None:
+            raise HTTPException(status_code=503, detail="Editor identity store is not ready")
+        return EditorIdentityStore(engine, settings)
+
+    async def principal_for(request: Request) -> EditorPrincipal:
+        await control.authorize_network(request)
+        legacy = control.legacy_principal(request)
+        if legacy is not None:
+            return legacy
+        authorization = request.headers.get("authorization", "")
+        scheme, separator, token = authorization.partition(" ")
+        if separator != " " or scheme.casefold() != "bearer" or not token:
+            raise HTTPException(status_code=401, detail="Editor authentication required")
+        return await store_for(request).authenticate(token, request.headers.get("user-agent", ""))
+
+    async def access_for_principal(request: Request, principal: EditorPrincipal, permission: str, project: str = "*") -> EditorAccess:
+        if principal.legacy:
+            access = EditorAccess(principal, frozenset({"*"}), frozenset(), frozenset({"Founder"}), 1000, ("*",), (), ("*",))
+        else:
+            access = await store_for(request).access(principal, project)
+        if not access.permits(permission):
+            raise HTTPException(status_code=403, detail=f"Missing Editor permission: {permission}")
+        return access
+
+    async def access_for(request: Request, permission: str, project: str = "*") -> EditorAccess:
+        return await access_for_principal(request, await principal_for(request), permission, project)
+
+    def request_id(request: Request) -> str:
+        return str(getattr(request.state, "request_id", "") or uuid.uuid4())
+
+    async def throttle(access: EditorAccess, action: str, *, limit: int, window: int = 60) -> None:
+        await action_limiter.check(f"{access.principal.user_id}:{action}", limit=limit, window_seconds=window)
+
+    @router.get("/setup/status")
+    async def setup_status(request: Request, response: Response):
+        await control.authorize_network(request)
+        response.headers["Cache-Control"] = "no-store"
+        initialized = await store_for(request).initialized()
+        return {
+            "initialized": initialized,
+            "setup_enabled": settings.editor_setup_enabled and not initialized,
+            "account_authentication": True,
+            "api_version": 2,
+        }
+
+    @router.post("/setup/founder", status_code=status.HTTP_201_CREATED)
+    async def setup_founder(payload: FounderCreate, request: Request, response: Response):
+        await control.authorize_network(request)
+        if not settings.editor_setup_enabled:
+            raise HTTPException(status_code=404, detail="Founder setup is disabled")
+        supplied = request.headers.get("X-Forge-Setup-Token", "")
+        if not supplied or len(supplied) > 512 or not hmac.compare_digest(supplied, settings.editor_token):
+            raise HTTPException(status_code=401, detail="Valid one-time setup token required")
+        store = store_for(request)
+        principal, token = await store.bootstrap_founder(
+            username=payload.username,
+            password=payload.password,
+            display_name=payload.display_name,
+            user_agent=request.headers.get("user-agent", ""),
+        )
+        await store.audit(principal, "founder.bootstrap", project=None, target=principal.user_id, request_id=request_id(request))
+        response.headers["Cache-Control"] = "no-store"
+        return {
+            "access_token": token,
+            "token_type": "Bearer",
+            "expires_in": settings.editor_session_ttl_seconds,
+            "profile": await store.profile(principal.user_id),
+        }
+
+    @router.post("/auth/login")
+    async def login(payload: LoginRequest, request: Request, response: Response):
+        await control.authorize_network(request)
+        store = store_for(request)
+        principal, token = await store.login(
+            username=payload.username,
+            password=payload.password,
+            client_ip=client_ip(request, _csv(settings.editor_trusted_proxy_cidrs)),
+            user_agent=request.headers.get("user-agent", ""),
+        )
+        await store.audit(principal, "auth.login", project=None, target=principal.user_id, request_id=request_id(request))
+        response.headers["Cache-Control"] = "no-store"
+        return {
+            "access_token": token,
+            "token_type": "Bearer",
+            "expires_in": settings.editor_session_ttl_seconds,
+            "profile": await store.profile(principal.user_id),
+        }
+
+    @router.post("/auth/register", status_code=status.HTTP_201_CREATED)
+    async def register(payload: InvitationRegistration, request: Request, response: Response):
+        await control.authorize_network(request)
+        store = store_for(request)
+        principal, token = await store.accept_invitation(
+            invitation=payload.invitation,
+            username=payload.username,
+            password=payload.password,
+            display_name=payload.display_name,
+            user_agent=request.headers.get("user-agent", ""),
+        )
+        await store.audit(principal, "member.register", project=None, target=principal.user_id, request_id=request_id(request))
+        response.headers["Cache-Control"] = "no-store"
+        return {
+            "access_token": token,
+            "token_type": "Bearer",
+            "expires_in": settings.editor_session_ttl_seconds,
+            "profile": await store.profile(principal.user_id),
+        }
+
+    @router.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT)
+    async def logout(request: Request):
+        principal = await principal_for(request)
+        if not principal.legacy:
+            await store_for(request).logout(principal)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     @router.get("/capabilities")
     async def capabilities(request: Request):
-        await authorized(request)
+        access = await access_for(request, "projects.read")
         return {
-            "api_version": 1,
+            "api_version": 2,
             "read_only": settings.editor_read_only,
-            "allow_create_projects": settings.editor_allow_create_projects,
-            "allow_hooks": settings.editor_allow_hooks,
-            "allow_graphs": settings.editor_allow_graphs,
+            "allow_create_projects": settings.editor_allow_create_projects and access.permits("projects.create"),
+            "allow_hooks": settings.editor_allow_hooks and access.permits("documents.hooks.write"),
+            "allow_graphs": settings.editor_allow_graphs and access.permits("documents.graphs.write"),
+            "database_browser": settings.editor_database_browser_enabled and access.permits("databases.metadata.read"),
+            "collaboration": settings.editor_collaboration_enabled and access.permits("areas.read"),
+            "calls": settings.editor_calls_enabled and access.permits("calls.join"),
             "graph_schema_version": 1,
             "max_document_bytes": settings.editor_max_document_bytes,
-            "authentication": "X-Forge-Editor-Token",
+            "max_attachment_bytes": settings.editor_max_attachment_bytes,
+            "authentication": "Bearer session",
             "optimistic_concurrency": "sha256",
+            "cross_process_locking": True,
+            "permissions": sorted(access.permissions),
+            "roles": sorted(access.role_names),
+            "rank": access.rank,
         }
+
+    @router.get("/me")
+    async def me(request: Request):
+        access = await access_for(request, "profiles.read")
+        if access.principal.legacy:
+            return {
+                "id": access.principal.user_id,
+                "username": access.principal.username,
+                "display_name": access.principal.display_name,
+                "is_founder": True,
+                "legacy": True,
+            }
+        return await store_for(request).profile(access.principal.user_id)
+
+    @router.patch("/me")
+    async def update_me(payload: ProfileUpdate, request: Request):
+        access = await access_for(request, "profiles.write.own")
+        profile = await store_for(request).update_profile(access.principal, payload.model_dump(exclude_none=True))
+        await store_for(request).audit(
+            access.principal, "profile.update", project=None, target=access.principal.user_id, request_id=request_id(request)
+        )
+        return profile
+
+    @router.get("/roles")
+    async def roles(request: Request):
+        await access_for(request, "roles.read")
+        return {"roles": await store_for(request).list_roles()}
+
+    @router.post("/roles", status_code=status.HTTP_201_CREATED)
+    async def create_role(payload: RoleWrite, request: Request):
+        access = await access_for(request, "roles.manage")
+        await throttle(access, "roles.write", limit=30)
+        role = await store_for(request).save_role(access, payload.model_dump())
+        await store_for(request).audit(
+            access.principal,
+            "role.create",
+            project=None,
+            target=role["id"],
+            request_id=request_id(request),
+            detail={"name": role["name"], "rank": role["rank"]},
+        )
+        return role
+
+    @router.put("/roles/{role_id}")
+    async def update_role(role_id: str, payload: RoleWrite, request: Request):
+        access = await access_for(request, "roles.manage")
+        await throttle(access, "roles.write", limit=30)
+        role = await store_for(request).save_role(access, payload.model_dump(), role_id=role_id)
+        await store_for(request).audit(
+            access.principal,
+            "role.update",
+            project=None,
+            target=role_id,
+            request_id=request_id(request),
+            detail={"name": role["name"], "rank": role["rank"]},
+        )
+        return role
+
+    @router.get("/members")
+    async def members(request: Request):
+        await access_for(request, "members.read")
+        return {"members": await store_for(request).list_members()}
+
+    @router.put("/members/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+    async def update_member(user_id: str, payload: MemberUpdate, request: Request):
+        access = await access_for(request, "members.manage")
+        await throttle(access, "members.write", limit=30)
+        await store_for(request).replace_memberships(access, user_id, payload.memberships, active=payload.active)
+        await store_for(request).audit(
+            access.principal,
+            "member.update",
+            project=None,
+            target=user_id,
+            request_id=request_id(request),
+            detail={"active": payload.active},
+        )
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    @router.post("/invitations", status_code=status.HTTP_201_CREATED)
+    async def invitation(payload: InvitationCreate, request: Request, response: Response):
+        access = await access_for(request, "invitations.manage")
+        await throttle(access, "invitations.write", limit=30)
+        token = await store_for(request).create_invitation(access, payload.memberships, payload.expires_hours)
+        await store_for(request).audit(
+            access.principal,
+            "invitation.create",
+            project=None,
+            target="invitation",
+            request_id=request_id(request),
+            detail={"memberships": payload.memberships, "expires_hours": payload.expires_hours},
+        )
+        response.headers["Cache-Control"] = "no-store"
+        return {"invitation": token, "expires_hours": payload.expires_hours}
 
     @router.get("/projects")
     async def projects(request: Request):
-        await authorized(request)
-        return {"projects": control.list_projects()}
+        principal = await principal_for(request)
+        store = store_for(request) if not principal.legacy else None
+        visible = []
+        for project in control.list_projects():
+            access = (
+                EditorAccess(principal, frozenset({"*"}), frozenset(), frozenset({"Founder"}), 1000, ("*",), (), ("*",))
+                if principal.legacy
+                else await store.access(principal, project["directory"])
+            )
+            if access.permits("projects.read"):
+                visible.append(project)
+        return {"projects": visible}
 
     @router.post("/projects", status_code=status.HTTP_201_CREATED)
     async def create_project(payload: ProjectCreate, request: Request):
-        await authorized(request)
-        return await control.create_project(payload)
+        access = await access_for(request, "projects.create")
+        await throttle(access, "projects.create", limit=20)
+        created = await control.create_project(payload)
+        if not access.principal.legacy:
+            await store_for(request).audit(
+                access.principal, "project.create", project=created["directory"], target=created["slug"], request_id=request_id(request)
+            )
+        return created
 
     @router.get("/projects/{project_name}/documents")
     async def documents(project_name: str, request: Request):
-        await authorized(request)
-        return {"documents": control.list_documents(project_name)}
+        access = await access_for(request, "documents.read", project_name)
+        documents = control.list_documents(project_name)
+        for document in documents:
+            document["editable"] = bool(
+                document["editable"] and access.permits("documents.write") and access.permits_document(document["path"])
+            )
+        return {"documents": [item for item in documents if access.permits_document(item["path"])]}
 
     @router.get("/projects/{project_name}/documents/{document_path:path}")
     async def read_document(project_name: str, document_path: str, request: Request, response: Response):
-        await authorized(request)
+        access = await access_for(request, "documents.read", project_name)
+        if not access.permits_document(document_path):
+            raise HTTPException(status_code=404, detail="Document not found")
         content, digest = control.read_document(project_name, document_path)
         response.headers["ETag"] = f'"{digest}"'
         return {"path": document_path, "content": content, "sha256": digest}
 
     @router.put("/projects/{project_name}/documents/{document_path:path}")
     async def write_document(project_name: str, document_path: str, payload: DocumentWrite, request: Request, response: Response):
-        await authorized(request)
+        access = await access_for(request, "documents.write", project_name)
+        await throttle(access, "documents.write", limit=120)
+        if not access.permits_document(document_path):
+            raise HTTPException(status_code=403, detail="Role policy does not allow this document")
+        if document_path.startswith("hooks/") and not access.permits("documents.hooks.write"):
+            raise HTTPException(status_code=403, detail="Missing Editor permission: documents.hooks.write")
+        if document_path.startswith("graphs/") and not access.permits("documents.graphs.write"):
+            raise HTTPException(status_code=403, detail="Missing Editor permission: documents.graphs.write")
         digest = await control.write_document(project_name, document_path, payload)
+        if not access.principal.legacy:
+            await store_for(request).audit(
+                access.principal,
+                "document.write",
+                project=project_name,
+                target=document_path,
+                request_id=request_id(request),
+                detail={"sha256": digest},
+            )
         response.headers["ETag"] = f'"{digest}"'
         return {"path": document_path, "sha256": digest, "valid": True}
 
     @router.post("/projects/{project_name}/validate")
     async def validate_project(project_name: str, request: Request):
-        await authorized(request)
+        access = await access_for(request, "projects.validate", project_name)
         try:
             return control.validate_project(project_name)
         except RuntimeError as exc:
+            if not access.principal.is_founder and "*" not in access.document_allow:
+                raise HTTPException(status_code=422, detail="Project validation failed in a restricted document") from exc
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @router.get("/projects/{project_name}/databases")
+    async def databases(project_name: str, request: Request):
+        if not settings.editor_database_browser_enabled:
+            raise HTTPException(status_code=404, detail="Database browser is disabled")
+        access = await access_for(request, "databases.metadata.read", project_name)
+        expose = settings.editor_database_expose_undeclared and access.permits("databases.undeclared.read")
+        return database_catalog(control.runtime_for_project(project_name), access, expose_undeclared=expose)
+
+    @router.get("/projects/{project_name}/databases/{alias}/tables/{table_name}/rows")
+    async def database_rows(project_name: str, alias: str, table_name: str, request: Request, limit: int = 100, offset: int = 0):
+        if not settings.editor_database_browser_enabled:
+            raise HTTPException(status_code=404, detail="Database browser is disabled")
+        access = await access_for(request, "databases.rows.read", project_name)
+        await throttle(access, "databases.rows.read", limit=180)
+        if not 1 <= limit <= settings.editor_database_row_limit or not 0 <= offset <= 100_000:
+            raise HTTPException(status_code=422, detail="Database pagination is outside the server policy")
+        payload = await browse_rows(
+            control.runtime_for_project(project_name),
+            access,
+            alias=alias,
+            table_name=table_name,
+            limit=limit,
+            offset=offset,
+            expose_undeclared=settings.editor_database_expose_undeclared,
+        )
+        if not access.principal.legacy:
+            await store_for(request).audit(
+                access.principal,
+                "database.rows.read",
+                project=project_name,
+                target=f"{alias}:{table_name}",
+                request_id=request_id(request),
+                detail={"limit": limit, "offset": offset},
+            )
+        return payload
+
+    @router.get("/areas")
+    async def areas(request: Request, project: str = "*"):
+        if not settings.editor_collaboration_enabled:
+            raise HTTPException(status_code=404, detail="Collaboration is disabled")
+        access = await access_for(request, "areas.read", project)
+        return {"areas": await store_for(request).list_areas(access, project)}
+
+    @router.post("/areas", status_code=status.HTTP_201_CREATED)
+    async def create_area(payload: AreaCreate, request: Request):
+        access = await access_for(request, "areas.manage", payload.project)
+        await throttle(access, "areas.write", limit=30)
+        area = await store_for(request).create_area(access, payload.model_dump())
+        await store_for(request).audit(
+            access.principal,
+            "area.create",
+            project=payload.project,
+            target=area["id"],
+            request_id=request_id(request),
+            detail={"visibility": area["visibility"]},
+        )
+        return area
+
+    @router.get("/areas/{area_id}/messages")
+    async def messages(area_id: str, request: Request, limit: int = 100, before: datetime | None = None):
+        principal = await principal_for(request)
+        project = await store_for(request).area_project(area_id)
+        access = await access_for_principal(request, principal, "messages.read", project)
+        if not 1 <= limit <= 200:
+            raise HTTPException(status_code=422, detail="Message limit must be between 1 and 200")
+        return {"messages": await store_for(request).list_messages(access, area_id, before=before, limit=limit)}
+
+    @router.post("/areas/{area_id}/messages", status_code=status.HTTP_201_CREATED)
+    async def post_message(area_id: str, payload: MessageCreate, request: Request):
+        principal = await principal_for(request)
+        project = await store_for(request).area_project(area_id)
+        access = await access_for_principal(request, principal, "messages.write", project)
+        await throttle(access, "messages.write", limit=60)
+        if payload.kind == "announcement" and not access.permits("areas.manage"):
+            raise HTTPException(status_code=403, detail="Announcements require areas.manage")
+        message = await store_for(request).post_message(access, area_id, payload.body, payload.kind)
+        await store_for(request).audit(
+            access.principal,
+            "message.create",
+            project=None,
+            target=area_id,
+            request_id=request_id(request),
+            detail={"message_id": message["id"], "kind": payload.kind},
+        )
+        return message
+
+    @router.get("/notes")
+    async def notes(request: Request, project: str = "*"):
+        access = await access_for(request, "notes.read", project)
+        return {"notes": await store_for(request).list_notes(access, project)}
+
+    @router.post("/notes", status_code=status.HTTP_201_CREATED)
+    async def create_note(payload: NoteCreate, request: Request):
+        access = await access_for(request, "notes.write", payload.project)
+        await throttle(access, "notes.write", limit=30)
+        note = await store_for(request).create_note(access, payload.model_dump())
+        await store_for(request).audit(
+            access.principal,
+            "note.create",
+            project=payload.project,
+            target=note["id"],
+            request_id=request_id(request),
+            detail={"visibility": payload.visibility},
+        )
+        return note
+
+    @router.post("/areas/{area_id}/attachments", status_code=status.HTTP_201_CREATED)
+    async def upload_attachment(area_id: str, request: Request, upload: UploadFile):
+        principal = await principal_for(request)
+        project = await store_for(request).area_project(area_id)
+        access = await access_for_principal(request, principal, "attachments.write", project)
+        await throttle(access, "attachments.write", limit=10)
+        await store_for(request).visible_area(access, area_id)
+        raw_name = upload.filename or ""
+        if (
+            not raw_name
+            or raw_name != Path(raw_name).name
+            or "\\" in raw_name
+            or any(ord(character) < 32 for character in raw_name)
+            or len(raw_name) > 255
+        ):
+            raise HTTPException(status_code=422, detail="Attachment filename is invalid")
+        root = settings.editor_attachment_dir
+        if not root.is_absolute():
+            root = control.apps_dir.parent / root
+        root.mkdir(mode=0o700, parents=True, exist_ok=True)
+        if root.is_symlink() or not root.is_dir():
+            raise HTTPException(status_code=503, detail="Attachment storage is not a safe directory")
+        root = root.resolve()
+        stored_name = f"{uuid.uuid4()}.blob"
+        target = root / stored_name
+        fd, temporary_name = tempfile.mkstemp(prefix=".upload-", dir=root)
+        temporary = Path(temporary_name)
+        digest = hashlib.sha256()
+        size = 0
+        try:
+            with os.fdopen(fd, "wb") as handle:
+                while chunk := await upload.read(1024 * 1024):
+                    size += len(chunk)
+                    if size > settings.editor_max_attachment_bytes:
+                        raise HTTPException(status_code=413, detail="Attachment exceeds the server policy limit")
+                    digest.update(chunk)
+                    handle.write(chunk)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, target)
+            content_type = (upload.content_type or mimetypes.guess_type(raw_name)[0] or "application/octet-stream")[:160]
+            if any(character in content_type for character in "\r\n\0"):
+                content_type = "application/octet-stream"
+            try:
+                metadata = await store_for(request).register_attachment(
+                    access,
+                    area_id=area_id,
+                    original_name=raw_name,
+                    stored_name=stored_name,
+                    content_type=content_type,
+                    size=size,
+                    sha256=digest.hexdigest(),
+                )
+            except BaseException:
+                target.unlink(missing_ok=True)
+                raise
+        finally:
+            temporary.unlink(missing_ok=True)
+            await upload.close()
+        await store_for(request).audit(
+            access.principal,
+            "attachment.create",
+            project=None,
+            target=metadata["id"],
+            request_id=request_id(request),
+            detail={"size": size, "sha256": digest.hexdigest()},
+        )
+        return metadata
+
+    @router.get("/attachments/{attachment_id}", response_class=FileResponse)
+    async def download_attachment(attachment_id: str, request: Request):
+        principal = await principal_for(request)
+        project = await store_for(request).attachment_project(attachment_id)
+        access = await access_for_principal(request, principal, "attachments.read", project)
+        metadata = await store_for(request).attachment(access, attachment_id)
+        root = settings.editor_attachment_dir
+        if not root.is_absolute():
+            root = control.apps_dir.parent / root
+        if root.is_symlink() or not root.is_dir():
+            raise HTTPException(status_code=404, detail="Attachment file not found")
+        target = root / metadata["stored_name"]
+        try:
+            target.resolve(strict=True).relative_to(root.resolve(strict=True))
+        except (OSError, ValueError) as exc:
+            raise HTTPException(status_code=404, detail="Attachment file not found") from exc
+        if not target.is_file() or target.is_symlink() or target.stat().st_size != metadata["size"]:
+            raise HTTPException(status_code=404, detail="Attachment file not found")
+        return FileResponse(
+            target,
+            media_type=metadata["content_type"],
+            filename=metadata["original_name"],
+            headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
+        )
+
+    @router.post("/calls", status_code=status.HTTP_201_CREATED)
+    async def create_call(payload: CallCreate, request: Request):
+        if not settings.editor_calls_enabled:
+            raise HTTPException(status_code=404, detail="Calls are disabled")
+        principal = await principal_for(request)
+        project = await store_for(request).area_project(payload.area_id)
+        access = await access_for_principal(request, principal, "calls.start", project)
+        await throttle(access, "calls.start", limit=20)
+        call = await store_for(request).create_call(access, payload.area_id, payload.mode)
+        await store_for(request).audit(
+            access.principal, "call.create", project=None, target=call["id"], request_id=request_id(request), detail={"mode": payload.mode}
+        )
+        return call
+
+    @router.post("/calls/{call_id}/ticket")
+    async def create_call_ticket(call_id: str, request: Request, response: Response):
+        if not settings.editor_calls_enabled:
+            raise HTTPException(status_code=404, detail="Calls are disabled")
+        principal = await principal_for(request)
+        call = await store_for(request).call(call_id)
+        access = await access_for_principal(request, principal, "calls.join", call["project"])
+        await throttle(access, "calls.ticket", limit=30)
+        ticket = await store_for(request).call_ticket(access, call_id)
+        response.headers["Cache-Control"] = "no-store"
+        return {
+            "ticket": ticket,
+            "call_client_path": f"{EDITOR_PREFIX}/call-client/{call_id}",
+            "expires_in": settings.editor_call_ticket_ttl_seconds,
+        }
+
+    @router.get("/call-client/{call_id}", response_class=HTMLResponse, include_in_schema=False)
+    async def call_client(call_id: str, request: Request):
+        await control.authorize_network(request)
+        call = await store_for(request).call(call_id)
+        document, nonce = call_client_page(call_id, call["mode"], ice_servers)
+        return HTMLResponse(
+            document,
+            headers={
+                "Cache-Control": "no-store",
+                "Content-Security-Policy": f"default-src 'none'; script-src 'nonce-{nonce}'; style-src 'unsafe-inline'; connect-src 'self' wss: ws:; media-src 'self' blob:; img-src 'self' data:; base-uri 'none'; frame-ancestors 'self'",
+                "Permissions-Policy": "camera=(self), microphone=(self), geolocation=()",
+                "Referrer-Policy": "no-referrer",
+            },
+        )
+
+    @router.websocket("/ws/calls/{call_id}")
+    async def call_socket(websocket: WebSocket, call_id: str):
+        connection_id = ""
+        store: EditorIdentityStore | None = None
+        try:
+            await control.authorize_network(websocket)
+            store = store_for(websocket)
+            principal, connection_id = await store.consume_call_ticket(call_id, websocket.query_params.get("ticket", ""))
+            call = await store.call(call_id)
+            area_access = await store.access(principal, call["project"])
+            if not area_access.permits("calls.join"):
+                raise HTTPException(status_code=403, detail="Missing Editor permission: calls.join")
+            await store.visible_area(area_access, call["area_id"])
+        except HTTPException:
+            await websocket.close(code=1008)
+            return
+
+        await websocket.accept(subprotocol=None)
+        peers = await store.join_call(call_id, principal, connection_id)
+        sequence = await store.current_signal_sequence(call_id)
+        await websocket.send_json({"type": "peers", "peers": peers, "connection_id": connection_id})
+        await store.signal_call(call_id, connection_id, None, {"type": "peer_joined", "display_name": principal.display_name})
+        last_heartbeat = time.monotonic()
+        signal_window_started = time.monotonic()
+        signals_in_window = 0
+        try:
+            while True:
+                try:
+                    incoming = await asyncio.wait_for(websocket.receive_json(), timeout=0.2)
+                except TimeoutError:
+                    incoming = None
+                if incoming is not None:
+                    now_monotonic = time.monotonic()
+                    if now_monotonic - signal_window_started >= 10:
+                        signal_window_started = now_monotonic
+                        signals_in_window = 0
+                    signals_in_window += 1
+                    if signals_in_window > 120:
+                        await websocket.close(code=1008)
+                        break
+                    if not isinstance(incoming, dict) or len(json.dumps(incoming)) > 65_536:
+                        await websocket.close(code=1009)
+                        break
+                    signal_type = incoming.get("type")
+                    allowed_fields = {
+                        "offer": {"type", "target", "sdp"},
+                        "answer": {"type", "target", "sdp"},
+                        "ice": {"type", "target", "candidate"},
+                        "heartbeat": {"type"},
+                        "hangup": {"type"},
+                    }
+                    if signal_type not in allowed_fields or set(incoming) - allowed_fields[signal_type]:
+                        await websocket.close(code=1008)
+                        break
+                    if signal_type in {"offer", "answer", "ice"}:
+                        target = incoming.get("target")
+                        try:
+                            uuid.UUID(str(target))
+                        except ValueError:
+                            await websocket.close(code=1008)
+                            break
+                        if signal_type in {"offer", "answer"} and (
+                            not isinstance(incoming.get("sdp"), str) or len(incoming["sdp"]) > 32_768
+                        ):
+                            await websocket.close(code=1009)
+                            break
+                        if signal_type == "ice" and (
+                            not isinstance(incoming.get("candidate"), dict) or len(json.dumps(incoming["candidate"])) > 4096
+                        ):
+                            await websocket.close(code=1009)
+                            break
+                        await store.signal_call(call_id, connection_id, str(target), incoming)
+                    elif signal_type == "heartbeat":
+                        await store.heartbeat_call(connection_id)
+                    else:
+                        await store.signal_call(call_id, connection_id, None, {"type": "peer_left"})
+                        break
+                signals = await store.call_signals(call_id, connection_id, sequence)
+                for signal in signals:
+                    sequence = max(sequence, int(signal["sequence"]))
+                    await websocket.send_json(signal)
+                if time.monotonic() - last_heartbeat >= 15:
+                    await store.heartbeat_call(connection_id)
+                    last_heartbeat = time.monotonic()
+        except WebSocketDisconnect:
+            pass
+        finally:
+            if store is not None and connection_id:
+                try:
+                    await store.signal_call(call_id, connection_id, None, {"type": "peer_left"})
+                    await store.leave_call(connection_id)
+                except Exception:
+                    log.exception("Failed to clean up Editor call participant")
+
+    @router.get("/audit")
+    async def audit(request: Request, project: str | None = None, limit: int = 100):
+        await access_for(request, "audit.read", project or "*")
+        if not 1 <= limit <= 500:
+            raise HTTPException(status_code=422, detail="Audit limit must be between 1 and 500")
+        return {"events": await store_for(request).list_audit(project=project, limit=limit)}
 
     app.include_router(router)
     log.warning(
-        "Remote editor API enabled prefix=%s allowed_ips=%s read_only=%s hooks=%s",
+        "Remote Editor control plane enabled prefix=%s allowed_ips=%s accounts=true legacy=%s hooks=%s databases=%s collaboration=%s calls=%s",
         EDITOR_PREFIX,
         settings.editor_allowed_ips,
-        settings.editor_read_only,
+        settings.editor_legacy_token_enabled,
         settings.editor_allow_hooks,
+        settings.editor_database_browser_enabled,
+        settings.editor_collaboration_enabled,
+        settings.editor_calls_enabled,
     )

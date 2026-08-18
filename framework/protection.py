@@ -128,9 +128,28 @@ def host_allowed(host_header: str | None, allowed_hosts: list[str]) -> bool:
         return True
     if not host_header:
         return False
-    host = host_header.split(":", 1)[0].lower().rstrip(".")
+    raw = host_header.strip()
+    if not raw or any(character in raw for character in "/\\@\r\n\0 \t"):
+        return False
+    if raw.startswith("["):
+        closing = raw.find("]")
+        if closing < 0 or (raw[closing + 1 :] and not raw[closing + 1 :].startswith(":")):
+            return False
+        port = raw[closing + 2 :] if raw[closing + 1 :].startswith(":") else ""
+        if port and not port.isdigit():
+            return False
+        host = raw[1:closing].lower()
+    elif raw.count(":") == 1:
+        host, port = raw.rsplit(":", 1)
+        if port and not port.isdigit():
+            return False
+        host = host.lower().rstrip(".")
+    else:
+        host = raw.lower().rstrip(".")
     for pattern in allowed_hosts:
-        pattern = pattern.lower().rstrip(".")
+        pattern = pattern.strip().lower().rstrip(".")
+        if pattern.startswith("[") and pattern.endswith("]"):
+            pattern = pattern[1:-1]
         if pattern == host:
             return True
         if pattern.startswith("*.") and host.endswith(pattern[1:]) and host != pattern[2:]:

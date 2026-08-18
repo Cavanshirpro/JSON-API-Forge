@@ -53,6 +53,7 @@ This index covers the v0.5.0 canonical documentation set. Start with `00-Start-H
 - [40-Rate-Limiting-Overload-and-High-RPS.md](40-Rate-Limiting-Overload-and-High-RPS.md)
 - [41-Known-Limits-and-Non-Goals.md](41-Known-Limits-and-Non-Goals.md)
 - [42-Editor-Control-Plane.md](42-Editor-Control-Plane.md)
+- [43-Platform-and-Hosting-Matrix.md](43-Platform-and-Hosting-Matrix.md)
 - [cPanelGuide.md](cPanelGuide.md)
 
 ## Documentation policy

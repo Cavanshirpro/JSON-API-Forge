@@ -3,6 +3,11 @@
 ## [0.5.0] — 2026-08-18
 
 ### Visual authoring and control plane
+- Replaced the remotely reusable shared Editor credential with one-time founder setup, invitation enrollment, scrypt password hashes, expiring/revocable sessions and persistent login throttling; legacy-token compatibility is explicitly disabled in production.
+- Added immutable built-in ranks plus bounded custom roles, project/document/database scopes, protected founder authority and security audit records.
+- Added worker profiles, open/restricted project spaces, team messages, private/scoped notes, bounded attachments and one-time-ticket WebRTC audio/video signaling.
+- Added metadata-aware, policy-filtered, read-only database browsing; raw SQL and undeclared support tables remain unavailable by default.
+- Added configurable, validated STUN/TURN policy and a switch to disable founder setup/remove its secret after first use.
 - Added bounded, schema-versioned `graphs/*.forgegraph.json` documents behind an independent Editor policy, including exact-field, path, fan-in and cycle validation.
 - Added the Editor branch's Unreal-inspired node/wire authoring model, compiled Forge operation preview, eight atomic project templates and modern Graphite/amber Qt styling.
 - Upgraded the native Editor plugin contract to API v2 with binary SHA-256 verification, declared permissions and plugin-provided graph nodes.
@@ -16,6 +21,7 @@
 ### Examples and delivery
 - Expanded `exampleApps` to 25 named systems with deterministic generation and schema, CRUD, RPC, idempotency, realtime and graph smoke coverage.
 - Added six native Editor build targets covering Linux, Windows and macOS on x64 and ARM64, plus checksummed per-platform and combined artifacts.
+- Added checksum-verified standalone server installers and build jobs for Linux glibc/musl, Windows, macOS, OCI images, universal Python packages and cPanel/Passenger source bundles without changing the 0.5.0 version line.
 
 ## [0.4.2] — 2026-08-18
 

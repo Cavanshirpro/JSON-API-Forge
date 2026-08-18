@@ -3,10 +3,13 @@ set -eu
 
 python_bin="${PYTHON:-python3}"
 extra=""
-if [ "${1:-}" = "--dev" ]; then
+if [ "${1:-}" = "--release" ]; then
+  shift
+  exec "$(dirname "$0")/install-release.sh" "$@"
+elif [ "${1:-}" = "--dev" ]; then
   extra="[dev]"
 elif [ -n "${1:-}" ]; then
-  printf '%s\n' "usage: $0 [--dev]" >&2
+  printf '%s\n' "usage: $0 [--dev] | --release [release installer options]" >&2
   exit 2
 fi
 

@@ -35,6 +35,8 @@ host->showStatusMessage("Queue tools ready");
 
 Plugin-declared permissions are review metadata, not an operating-system sandbox. The Editor rechecks manifest/API/runtime identity and hashes the full binary before `QPluginLoader` executes it.
 
+Plugin graph nodes are preserved in the graph document and rendered on the canvas, but v0.5.0 does not grant native plugins an implicit configuration compiler. Compile preview rejects a custom/design-only node with its type name instead of silently omitting it; plugins may provide a reviewed tool action that emits ordinary Forge fragments and then runs the normal validation workflow.
+
 ## Forge-backed catalog
 
 The catalog browser calls a standard resource endpoint:

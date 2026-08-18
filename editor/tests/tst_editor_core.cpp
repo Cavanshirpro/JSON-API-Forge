@@ -25,6 +25,7 @@ private slots:
     void pluginManifestPathPolicy();
     void graphModelPolicyAndCompiler();
     void graphCycleRollback();
+    void graphCompilerRejectsDesignOnlyNodes();
     void pythonSdkSnippetPolicy();
     void forgePluginCatalogPolicy();
     void embeddedProjectTemplates();
@@ -167,6 +168,22 @@ void EditorCoreTests::graphCycleRollback()
     QVERIFY(!graph.connectNodes(second, QStringLiteral("exec"), first, QStringLiteral("exec"), &error));
     QVERIFY(error.contains(QStringLiteral("acyclic")));
     QCOMPARE(graph.document().value(QStringLiteral("edges")).toArray().size(), 1);
+}
+
+void EditorCoreTests::graphCompilerRejectsDesignOnlyNodes()
+{
+    GraphModel graph;
+    const auto branch = graph.addNode(QStringLiteral("logic.branch"), QStringLiteral("Guard"), QPointF(0, 0));
+    const auto query = graph.addNode(QStringLiteral("data.query"), QStringLiteral("Query"), QPointF(280, 0),
+                                     QJsonObject{{QStringLiteral("sql"), QStringLiteral("SELECT 1")}});
+    const auto operation = graph.addNode(QStringLiteral("operation.call"), QStringLiteral("Operation"), QPointF(560, 0),
+                                         QJsonObject{{QStringLiteral("name"), QStringLiteral("guarded.operation")}});
+    QString error;
+    QVERIFY(graph.connectNodes(branch, QStringLiteral("exec"), query, QStringLiteral("exec"), &error));
+    QVERIFY(graph.connectNodes(query, QStringLiteral("exec"), operation, QStringLiteral("exec"), &error));
+    QVERIFY(graph.compiledFragment(&error).isEmpty());
+    QVERIFY(error.contains(QStringLiteral("design-only")));
+    QVERIFY(error.contains(QStringLiteral("not silently omitted")));
 }
 
 void EditorCoreTests::pythonSdkSnippetPolicy()

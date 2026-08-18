@@ -387,6 +387,9 @@ QJsonObject GraphModel::compiledFragment(QString *errorMessage) const
     QJsonArray statements;
     QJsonArray hooks;
     bool hasExecute = false;
+    bool hasRequest = false;
+    bool hasPolicy = false;
+    bool hasResponse = false;
     for (const auto &id : order) {
         const auto value = node(id);
         const auto type = value.value(QStringLiteral("type")).toString();
@@ -398,8 +401,18 @@ QJsonObject GraphModel::compiledFragment(QString *errorMessage) const
             }
             operationNode = value;
         } else if (type == QStringLiteral("request.input")) {
+            if (hasRequest) {
+                fail(errorMessage, QStringLiteral("A compiled graph supports at most one Request node."));
+                return {};
+            }
+            hasRequest = true;
             requestProperties = properties;
         } else if (type == QStringLiteral("auth.policy")) {
+            if (hasPolicy) {
+                fail(errorMessage, QStringLiteral("A compiled graph supports at most one Authorization node."));
+                return {};
+            }
+            hasPolicy = true;
             policyProperties = properties;
         } else if (type == QStringLiteral("data.query") || type == QStringLiteral("data.mutate")) {
             const auto sql = properties.value(QStringLiteral("sql")).toString().trimmed();
@@ -432,6 +445,22 @@ QJsonObject GraphModel::compiledFragment(QString *errorMessage) const
             if (!hook.isEmpty()) {
                 hooks.append(hook);
             }
+        } else if (type == QStringLiteral("response.output")) {
+            if (hasResponse) {
+                fail(errorMessage, QStringLiteral("A compiled graph supports at most one Response node."));
+                return {};
+            }
+            hasResponse = true;
+            const auto status = properties.value(QStringLiteral("status_code")).toInt(200);
+            if (status != 200) {
+                fail(errorMessage, QStringLiteral("Forge operations currently compile only the standard HTTP 200 response."));
+                return {};
+            }
+        } else {
+            fail(errorMessage,
+                 QStringLiteral("Node type '%1' is design-only until a Forge compiler implementation is available; it was not silently omitted.")
+                     .arg(type));
+            return {};
         }
     }
     if (operationNode.isEmpty() || statements.isEmpty()) {
@@ -440,12 +469,19 @@ QJsonObject GraphModel::compiledFragment(QString *errorMessage) const
     }
 
     const auto operationProperties = operationNode.value(QStringLiteral("properties")).toObject();
+    const auto method = operationProperties.value(QStringLiteral("method"))
+                            .toString(requestProperties.value(QStringLiteral("method")).toString(hasExecute ? QStringLiteral("POST")
+                                                                                                      : QStringLiteral("GET")))
+                            .toUpper();
+    if (!QSet<QString>{QStringLiteral("GET"), QStringLiteral("POST"), QStringLiteral("PUT"), QStringLiteral("PATCH"),
+                       QStringLiteral("DELETE")}
+             .contains(method)) {
+        fail(errorMessage, QStringLiteral("Operation method must be GET, POST, PUT, PATCH, or DELETE."));
+        return {};
+    }
     QJsonObject operation{{QStringLiteral("name"),
                            operationProperties.value(QStringLiteral("name")).toString(QStringLiteral("graph.operation"))},
-                          {QStringLiteral("method"),
-                           operationProperties.value(QStringLiteral("method"))
-                               .toString(requestProperties.value(QStringLiteral("method")).toString(hasExecute ? QStringLiteral("POST")
-                                                                                                           : QStringLiteral("GET")))},
+                          {QStringLiteral("method"), method},
                           {QStringLiteral("database"),
                            operationProperties.value(QStringLiteral("database")).toString(QStringLiteral("primary"))},
                           {QStringLiteral("transaction"), hasExecute},

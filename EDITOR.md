@@ -8,7 +8,7 @@ JSON API Forge Editor is a C++20/Qt 6 desktop workspace for authoring and operat
 - **Visual** exposes resources, operations, databases and event channels as selectable, draggable components with typed and JSON property editing.
 - **Graph** provides a grid canvas with pan/zoom, marquee selection, draggable nodes, output-to-input Bézier wires, cycle/fan-in validation, automatic layout, fit-to-content and a live compiled-operation preview.
 
-The graph palette includes Request, Authorization, SQL Query, SQL Mutation, Branch, Transform, Forge Operation, Python SDK, Event and Response nodes. Native plugins can register additional node types through Plugin API v2. Graphs are stored as bounded, schema-versioned `graphs/*.forgegraph.json` documents and target one direct `config/*.json` fragment.
+The graph palette includes Request, Authorization, SQL Query, SQL Mutation, Branch, Transform, Forge Operation, Python SDK, Event and Response nodes. Native plugins can register additional node types through Plugin API v2. Branch/Transform/Event and custom plugin nodes remain explicit design nodes until a compiler exists for their semantics; compile preview reports them instead of silently dropping behavior. Graphs are stored as bounded, schema-versioned `graphs/*.forgegraph.json` documents and target one direct `config/*.json` fragment.
 
 ## Project templates
 

@@ -29,22 +29,40 @@ Use **File → New from template…** after opening a local workspace. Creation 
 
 Choose **File → Open local workspace…** and select a Forge repository root, its `app/` directory or one project directory. Local JSON/graph saves use `QSaveFile` atomic replacement. The Editor performs structural checks; `forge validate` remains the canonical merged-project and semantic validator.
 
-For remote administration, enable the control plane only on a private endpoint:
+For remote administration, enable the account control plane only on a private endpoint:
 
 ```dotenv
 EDITOR_API_ENABLED=true
-EDITOR_TOKEN=<strong-independent-secret>
+EDITOR_TOKEN=<one-time-founder-setup-secret-with-32+-characters>
+EDITOR_SETUP_ENABLED=true
 EDITOR_REQUIRE_HTTPS=true
 EDITOR_ALLOWED_IPS=10.20.0.0/16
 EDITOR_TRUSTED_PROXY_CIDRS=10.0.0.0/8
+EDITOR_TRUSTED_HOSTS=forge-admin.example.com
 EDITOR_ALLOWED_PROJECTS=Billing,InternalPortal
 EDITOR_READ_ONLY=false
 EDITOR_ALLOW_CREATE_PROJECTS=false
 EDITOR_ALLOW_HOOKS=false
 EDITOR_ALLOW_GRAPHS=true
+EDITOR_DATABASE_BROWSER_ENABLED=true
+EDITOR_COLLABORATION_ENABLED=true
+EDITOR_CALLS_ENABLED=true
+EDITOR_ATTACHMENT_DIR=/srv/json-api-forge/editor-attachments
+EDITOR_CALL_ICE_SERVERS_JSON=[{"urls":["turns:turn.example.com:5349"],"username":"forge","credential":"replace-me"}]
 ```
 
-The desktop token stays in memory and is cleared on disconnect/destruction; only the non-secret last URL is saved. Redirects, certificate failures and ambient desktop proxies are rejected. Plain HTTP requires a visible local-development opt-in and is restricted to loopback addresses. Keep the endpoint behind a VPN/private administration host and firewall. Python hook editing remains a separate, high-risk policy.
+Use the Editor's one-time founder setup page once, then set `EDITOR_SETUP_ENABLED=false`, remove `EDITOR_TOKEN` from the environment and restart. Workers join with single-use, expiring invitations and then sign in with their own account. Passwords and bearer sessions stay in memory; only the non-secret last URL is saved. Redirects, certificate failures and ambient desktop proxies are rejected. Plain HTTP requires a visible local-development opt-in and is restricted to loopback addresses. Keep the endpoint behind a VPN/private administration host and firewall. Python hook editing remains a separate, high-risk policy.
+
+Open **Integrations → Team Workspace** for the server-backed operational console:
+
+- edit the signed-in member profile;
+- create lower-ranked roles from explicit permissions and document/database patterns;
+- replace worker memberships, project scopes and active status in one server transaction;
+- use open or restricted project spaces, chat, scoped notes and policy-filtered file sharing;
+- browse only runtime-declared database resources and only the fields allowed by Forge policy;
+- start audio/video rooms through one-time WebRTC tickets and inspect the append-only security audit.
+
+Qt WebEngine embeds the call surface with an off-the-record profile when available. Builds without it open the same-origin one-time URL in the system browser. Production calls need a configured TURN service, and WebSocket-capable native ASGI hosting; conventional Passenger/cPanel HTTP hosting does not provide the call transport.
 
 Remote graph support is deliberately metadata-only. The server checks document size, exact fields, node/edge identities, target path, unique input fan-in and acyclic execution. Compiled JSON must still pass normal Forge validation before deployment.
 
@@ -70,7 +88,7 @@ Native plugins execute with the desktop user's privileges. Hash verification det
 
 ## Build locally
 
-Prerequisites are CMake 3.24+, a C++20 compiler, Qt 6.4+ with Core/Gui/Widgets/Network/Test, and preferably Ninja.
+Prerequisites are CMake 3.24+, a C++20 compiler, Qt 6.4+ with Core/Gui/Widgets/Network/Test, preferably WebEngineWidgets for embedded calls, and Ninja.
 
 ```bash
 cmake -S . -B build/editor -G Ninja \
@@ -84,7 +102,7 @@ QT_QPA_PLATFORM=offscreen build/editor/editor/JSON-API-Forge-Editor \
   --graph-preview --screenshot build/editor-graph-preview.png
 ```
 
-The supplied project logo is embedded unchanged in the UI and converted to native Windows/macOS icons. Linux installs include a desktop entry and hicolor icon.
+The original background logo remains the application/window/platform icon. The transparent, text-free Forge mark is used inside the Amber Gold + Graphite Gray interface. Linux installs include a desktop entry and hicolor icon.
 
 ## CI artifacts
 

@@ -37,6 +37,7 @@ jobs:
           required = [
               "editor/src/MainWindow.cpp",
               "editor/src/ApiClient.cpp",
+              "editor/src/TeamWorkspace.cpp",
               "editor/src/VisualDesigner.cpp",
               "editor/src/GraphModel.cpp",
               "editor/src/NodeGraphEditor.cpp",
@@ -47,6 +48,7 @@ jobs:
               "editor/resources/styles/dark.qss",
               "editor/resources/templates/catalog.json",
               "editor/resources/logo.png",
+              "editor/resources/brand-mark-transparent.png",
               "editor/resources/forge-editor.ico",
               "editor/resources/forge-editor.icns",
               "editor/resources/dev.jsonapiforge.editor.desktop",
@@ -88,9 +90,17 @@ jobs:
         shell: bash
         run: |
           sudo apt-get update
-          sudo apt-get install --no-install-recommends -y ninja-build qt6-base-dev qt6-base-dev-tools
+          sudo apt-get install --no-install-recommends -y ninja-build qt6-base-dev qt6-base-dev-tools qt6-webengine-dev
       - name: Install Qt on Windows
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && matrix.artifact == 'windows-x64'
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.8.3"
+          arch: ${{ matrix.qt_arch }}
+          modules: qtwebengine
+          cache: true
+      - name: Install Qt on Windows ARM64
+        if: runner.os == 'Windows' && matrix.artifact == 'windows-arm64'
         uses: jurplel/install-qt-action@v4
         with:
           version: "6.8.3"
@@ -101,6 +111,7 @@ jobs:
         uses: jurplel/install-qt-action@v4
         with:
           version: "6.8.3"
+          modules: qtwebengine
           cache: true
       - name: Configure
         run: >-
@@ -119,8 +130,10 @@ jobs:
           mkdir -p artifacts
           QT_QPA_PLATFORM=offscreen build/editor/JSON-API-Forge-Editor --screenshot artifacts/editor-welcome-${{ matrix.artifact }}.png
           QT_QPA_PLATFORM=offscreen build/editor/JSON-API-Forge-Editor --graph-preview --screenshot artifacts/editor-graph-${{ matrix.artifact }}.png
+          QT_QPA_PLATFORM=offscreen build/editor/JSON-API-Forge-Editor --team-preview --screenshot artifacts/editor-team-${{ matrix.artifact }}.png
           test -s artifacts/editor-welcome-${{ matrix.artifact }}.png
           test -s artifacts/editor-graph-${{ matrix.artifact }}.png
+          test -s artifacts/editor-team-${{ matrix.artifact }}.png
       - name: Stage install tree
         run: cmake --install build --config Release --prefix stage
       - name: Package Linux install tree

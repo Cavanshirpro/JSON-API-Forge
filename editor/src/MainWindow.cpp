@@ -7,6 +7,7 @@
 #include "NodeGraphEditor.hpp"
 #include "PluginCatalogClient.hpp"
 #include "PythonSdkPanel.hpp"
+#include "TeamWorkspace.hpp"
 #include "TemplateManager.hpp"
 #include "VisualDesigner.hpp"
 
@@ -117,6 +118,8 @@ MainWindow::MainWindow(QWidget *parent)
             [this](const QString &message) { showStatusMessage(message, 6000); });
     connect(m_pythonPanel, &PythonSdkPanel::statusMessage, this,
             [this](const QString &message) { showStatusMessage(message, 6000); });
+    connect(m_teamWorkspace, &TeamWorkspace::statusMessage, this,
+            [this](const QString &message) { showStatusMessage(message, 8000); });
 }
 
 MainWindow::~MainWindow()
@@ -135,6 +138,13 @@ void MainWindow::showGraphPreview()
     loadDocument(QStringLiteral("graphs/preview.forgegraph.json"),
                  DocumentCodec::prettyJson(NodeGraphEditor::starterDocument(target)), QStringLiteral("new"));
     setDirty(false);
+}
+
+void MainWindow::showTeamPreview()
+{
+    m_teamDock->show();
+    m_teamDock->raise();
+    resizeDocks({m_teamDock}, {660}, Qt::Horizontal);
 }
 
 void MainWindow::buildInterface()
@@ -156,7 +166,8 @@ void MainWindow::buildInterface()
     auto *brandLayout = new QHBoxLayout(brandRow);
     brandLayout->setContentsMargins(0, 0, 0, 0);
     auto *logo = new QLabel(brandRow);
-    logo->setPixmap(QPixmap(QStringLiteral(":/branding/logo.png")).scaled(48, 48, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    logo->setPixmap(QPixmap(QStringLiteral(":/branding/mark.png"))
+                        .scaled(48, 48, Qt::KeepAspectRatio, Qt::SmoothTransformation));
     auto *brandText = new QLabel(QStringLiteral("JSON API\nFORGE"), brandRow);
     brandText->setObjectName(QStringLiteral("brandText"));
     brandLayout->addWidget(logo);
@@ -236,26 +247,29 @@ void MainWindow::buildInterface()
     m_welcomePage = new QWidget(m_workspace);
     m_welcomePage->setObjectName(QStringLiteral("welcomePage"));
     auto *welcomeLayout = new QVBoxLayout(m_welcomePage);
-    welcomeLayout->setContentsMargins(60, 40, 60, 50);
+    welcomeLayout->setContentsMargins(28, 40, 28, 50);
     welcomeLayout->setAlignment(Qt::AlignCenter);
     welcomeLayout->setSpacing(14);
     auto *welcomeLogo = new QLabel(m_welcomePage);
     welcomeLogo->setObjectName(QStringLiteral("welcomeLogo"));
-    welcomeLogo->setPixmap(QPixmap(QStringLiteral(":/branding/logo.png")).scaled(
-        180, 180, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    welcomeLogo->setPixmap(QPixmap(QStringLiteral(":/branding/mark.png"))
+                               .scaled(210, 210, Qt::KeepAspectRatio, Qt::SmoothTransformation));
     welcomeLogo->setAlignment(Qt::AlignCenter);
     auto *welcomeBadge = new QLabel(QStringLiteral("POLICY-AWARE  ·  LOCAL OR REMOTE"), m_welcomePage);
     welcomeBadge->setObjectName(QStringLiteral("welcomeBadge"));
     welcomeBadge->setAlignment(Qt::AlignCenter);
+    welcomeBadge->setWordWrap(true);
     auto *welcomeTitle = new QLabel(QStringLiteral("Design APIs without losing the code."), m_welcomePage);
     welcomeTitle->setObjectName(QStringLiteral("welcomeTitle"));
     welcomeTitle->setAlignment(Qt::AlignCenter);
+    welcomeTitle->setWordWrap(true);
     auto *welcomeText = new QLabel(
-        QStringLiteral("Edit validated JSON directly, or shape resources and operations visually.\n"
-                       "Server capabilities always decide what can be created or changed."),
+        QStringLiteral("Edit validated JSON and operation graphs, inspect policy-filtered databases,\n"
+                       "and collaborate through ranked team spaces, notes and secure calls."),
         m_welcomePage);
     welcomeText->setObjectName(QStringLiteral("welcomeText"));
     welcomeText->setAlignment(Qt::AlignCenter);
+    welcomeText->setWordWrap(true);
     auto *welcomeButtons = new QWidget(m_welcomePage);
     auto *welcomeButtonLayout = new QHBoxLayout(welcomeButtons);
     welcomeButtonLayout->setContentsMargins(0, 8, 0, 0);
@@ -301,6 +315,14 @@ void MainWindow::buildInterface()
     m_pythonDock->setWidget(m_pythonPanel);
     addDockWidget(Qt::RightDockWidgetArea, m_pythonDock);
     m_pythonDock->hide();
+    m_teamDock = new QDockWidget(QStringLiteral("Server Team Workspace"), this);
+    m_teamDock->setObjectName(QStringLiteral("teamWorkspaceDock"));
+    m_teamDock->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea | Qt::BottomDockWidgetArea);
+    m_teamDock->setMinimumWidth(520);
+    m_teamWorkspace = new TeamWorkspace(m_api, m_teamDock);
+    m_teamDock->setWidget(m_teamWorkspace);
+    addDockWidget(Qt::RightDockWidgetArea, m_teamDock);
+    m_teamDock->hide();
     statusBar()->setObjectName(QStringLiteral("statusBar"));
     statusBar()->showMessage(QStringLiteral("Ready"));
 
@@ -349,6 +371,11 @@ void MainWindow::buildActions()
     pluginMenu->addAction(QStringLiteral("Reload approved plugins"), this, &MainWindow::reloadPlugins);
 
     auto *integrationMenu = menuBar()->addMenu(QStringLiteral("&Integrations"));
+    auto *teamAction = integrationMenu->addAction(QStringLiteral("Server team workspace"));
+    teamAction->setCheckable(true);
+    teamAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+4")));
+    connect(teamAction, &QAction::toggled, m_teamDock, &QDockWidget::setVisible);
+    connect(m_teamDock, &QDockWidget::visibilityChanged, teamAction, &QAction::setChecked);
     auto *pythonAction = integrationMenu->addAction(QStringLiteral("Python SDK panel"));
     pythonAction->setCheckable(true);
     connect(pythonAction, &QAction::toggled, m_pythonDock, &QDockWidget::setVisible);
@@ -377,7 +404,7 @@ void MainWindow::connectToServer()
         return;
     }
     QString error;
-    if (!m_api->configure(dialog.serverUrl(), dialog.token(), dialog.allowInsecureHttp(), &error)) {
+    if (!m_api->configureServer(dialog.serverUrl(), dialog.allowInsecureHttp(), &error)) {
         QMessageBox::warning(this, QStringLiteral("Cannot connect"), error);
         return;
     }
@@ -393,13 +420,26 @@ void MainWindow::connectToServer()
     m_connectionLabel->setObjectName(QStringLiteral("connectionPending"));
     m_connectionLabel->style()->unpolish(m_connectionLabel);
     m_connectionLabel->style()->polish(m_connectionLabel);
-    m_api->fetchCapabilities();
+    switch (dialog.authenticationMode()) {
+    case ConnectionDialog::AuthenticationMode::SignIn:
+        m_api->login(dialog.username(), dialog.password());
+        break;
+    case ConnectionDialog::AuthenticationMode::JoinInvitation:
+        m_api->registerMember(dialog.invitation(), dialog.username(), dialog.password(), dialog.displayName());
+        break;
+    case ConnectionDialog::AuthenticationMode::FounderSetup:
+        m_api->setupFounder(dialog.setupToken(), dialog.username(), dialog.password(), dialog.displayName());
+        break;
+    }
 }
 
 void MainWindow::disconnectServer()
 {
     if (!confirmDiscard()) {
         return;
+    }
+    if (m_api->isConfigured()) {
+        m_api->logout();
     }
     m_api->clearCredentials();
     m_remoteMode = false;
@@ -417,6 +457,8 @@ void MainWindow::disconnectServer()
     m_policyHooks = false;
     m_policyGraphs = false;
     m_policyMaxBytes = 0;
+    m_teamWorkspace->reset();
+    m_teamDock->hide();
     updatePolicyPanel();
     setDirty(false);
     showWelcome();
@@ -433,6 +475,8 @@ void MainWindow::openLocalWorkspace()
     }
     m_api->clearCredentials();
     m_remoteMode = false;
+    m_teamWorkspace->reset();
+    m_teamDock->hide();
     populateLocalProjects(selected);
 }
 
@@ -495,8 +539,10 @@ void MainWindow::selectProject()
     m_saveAction->setEnabled(false);
     m_validateAction->setEnabled(true);
     if (item->data(ProjectSourceRole).toInt() == RemoteSource) {
+        m_teamWorkspace->setProject(m_currentProject);
         m_api->fetchDocuments(m_currentProject);
     } else {
+        m_teamWorkspace->setProject(QString());
         populateLocalDocuments(m_currentProjectPath);
     }
 }
@@ -1016,17 +1062,37 @@ void MainWindow::toggleSidebar()
 
 void MainWindow::handleApiJson(const QString &operation, const QJsonObject &payload)
 {
+    if (operation.startsWith(QStringLiteral("auth-"))) {
+        if (operation == QStringLiteral("auth-logout")) {
+            return;
+        }
+        const auto profile = payload.value(QStringLiteral("profile")).toObject();
+        m_connectionLabel->setText(
+            QStringLiteral("●  %1 · @%2")
+                .arg(profile.value(QStringLiteral("display_name")).toString(),
+                     profile.value(QStringLiteral("username")).toString()));
+        m_connectionLabel->setObjectName(QStringLiteral("connectionOnline"));
+        m_connectionLabel->style()->unpolish(m_connectionLabel);
+        m_connectionLabel->style()->polish(m_connectionLabel);
+        m_api->fetchCapabilities();
+        m_api->fetchProfile();
+        m_teamDock->show();
+        resizeDocks({m_teamDock}, {660}, Qt::Horizontal);
+        showStatusMessage(QStringLiteral("Account session established. Server roles and scopes remain authoritative."),
+                          7000);
+        return;
+    }
     if (operation == QStringLiteral("capabilities")) {
         m_policyReadOnly = payload.value(QStringLiteral("read_only")).toBool(true);
         m_policyCreate = payload.value(QStringLiteral("allow_create_projects")).toBool(false);
         m_policyHooks = payload.value(QStringLiteral("allow_hooks")).toBool(false);
         m_policyGraphs = payload.value(QStringLiteral("allow_graphs")).toBool(false);
         m_policyMaxBytes = payload.value(QStringLiteral("max_document_bytes")).toInt();
-        m_connectionLabel->setText(QStringLiteral("●  Secure remote"));
-        m_connectionLabel->setObjectName(QStringLiteral("connectionOnline"));
+        m_teamWorkspace->setCapabilities(payload);
         updatePolicyPanel();
         m_createAction->setEnabled(m_policyCreate && !m_policyReadOnly);
         m_api->fetchProjects();
+        m_teamWorkspace->refreshAll();
         return;
     }
     if (operation == QStringLiteral("projects")) {
@@ -1085,6 +1151,18 @@ void MainWindow::handleApiJson(const QString &operation, const QJsonObject &payl
 
 void MainWindow::handleApiError(const QString &operation, int statusCode, const QString &message)
 {
+    if (operation.startsWith(QStringLiteral("auth-"))) {
+        m_api->clearCredentials();
+        m_remoteMode = false;
+        m_connectionLabel->setText(QStringLiteral("●  Authentication failed"));
+        m_connectionLabel->setObjectName(QStringLiteral("connectionOffline"));
+        m_teamWorkspace->reset();
+    }
+    if (statusCode == 401 && !operation.startsWith(QStringLiteral("auth-"))) {
+        m_connectionLabel->setText(QStringLiteral("●  Session expired"));
+        m_connectionLabel->setObjectName(QStringLiteral("connectionOffline"));
+        m_teamWorkspace->reset();
+    }
     if (statusCode == 409 && operation.startsWith(QStringLiteral("save:"))) {
         const auto answer = QMessageBox::question(this, QStringLiteral("Document changed on server"),
                                                   QStringLiteral("Your copy is stale. Reload the server version? Unsaved local edits will be lost.\n\n%1")
@@ -1331,8 +1409,9 @@ void MainWindow::showAbout()
     QMessageBox box(this);
     box.setWindowTitle(QStringLiteral("About JSON API Forge Editor"));
     box.setIconPixmap(QPixmap(QStringLiteral(":/branding/logo.png")).scaled(112, 112, Qt::KeepAspectRatio, Qt::SmoothTransformation));
-    box.setText(QStringLiteral("<h2>JSON API Forge Editor 0.5.0</h2><p>A policy-aware C++20 / Qt 6 editor for local and remote Forge projects.</p>"
-                               "<p>Code + visual configuration · optimistic concurrency · validated atomic saves · explicit native plugin approval.</p>"));
+    box.setText(QStringLiteral(
+        "<h2>JSON API Forge Editor 0.5.0</h2><p>An Amber Gold + Graphite Gray C++20 / Qt 6 workspace for local and secure remote Forge projects.</p>"
+        "<p>Code + graphs + visual configuration · database explorer · ranked team spaces · notes · WebRTC calls · optimistic concurrency · validated atomic saves.</p>"));
     box.exec();
 }
 

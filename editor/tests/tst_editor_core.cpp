@@ -8,10 +8,17 @@
 
 #include <QDir>
 #include <QFile>
+#include <QHostAddress>
+#include <QImage>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QSharedPointer>
+#include <QSignalSpy>
+#include <QTcpServer>
+#include <QTcpSocket>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QUrlQuery>
 
 class EditorCoreTests final : public QObject {
     Q_OBJECT
@@ -22,6 +29,9 @@ private slots:
     void atomicSaveAndDigest();
     void serverUrlPolicy();
     void tokenPolicy();
+    void accountSessionTransportPolicy();
+    void callTicketUrlPolicy();
+    void brandAssetAndTheme();
     void pluginManifestPathPolicy();
     void graphModelPolicyAndCompiler();
     void graphCycleRollback();
@@ -30,6 +40,68 @@ private slots:
     void forgePluginCatalogPolicy();
     void embeddedProjectTemplates();
 };
+
+namespace {
+class LocalJsonServer final : public QTcpServer {
+public:
+    struct Response {
+        QByteArray status;
+        QByteArray body;
+        QList<QPair<QByteArray, QByteArray>> headers;
+    };
+
+    explicit LocalJsonServer(QObject *parent = nullptr)
+        : QTcpServer(parent)
+    {
+        connect(this, &QTcpServer::newConnection, this, [this] {
+            while (hasPendingConnections()) {
+                auto *socket = nextPendingConnection();
+                const auto bytes = QSharedPointer<QByteArray>::create();
+                connect(socket, &QTcpSocket::readyRead, this, [this, socket, bytes] {
+                    bytes->append(socket->readAll());
+                    const auto headerEnd = bytes->indexOf("\r\n\r\n");
+                    if (headerEnd < 0) {
+                        return;
+                    }
+                    qint64 contentLength = 0;
+                    for (const auto &line : bytes->left(headerEnd).split('\n')) {
+                        const auto normalized = line.trimmed();
+                        if (normalized.toLower().startsWith("content-length:")) {
+                            contentLength = normalized.mid(15).trimmed().toLongLong();
+                        }
+                    }
+                    const auto total = static_cast<qint64>(headerEnd) + 4 + contentLength;
+                    if (bytes->size() < total) {
+                        return;
+                    }
+                    requests.append(bytes->left(total));
+                    const auto response = responses.isEmpty()
+                        ? Response{QByteArray("500 Internal Server Error"), QByteArray("{}"), {}}
+                        : responses.takeFirst();
+                    QByteArray output = QByteArray("HTTP/1.1 ") + response.status + QByteArray("\r\n")
+                        + QByteArray("Content-Type: application/json\r\nConnection: close\r\nContent-Length: ")
+                        + QByteArray::number(response.body.size()) + QByteArray("\r\n");
+                    for (const auto &[name, value] : response.headers) {
+                        output += name + QByteArray(": ") + value + QByteArray("\r\n");
+                    }
+                    output += QByteArray("\r\n") + response.body;
+                    socket->write(output);
+                    socket->disconnectFromHost();
+                });
+            }
+        });
+    }
+
+    void enqueue(const QByteArray &status, const QByteArray &body,
+                 const QList<QPair<QByteArray, QByteArray>> &headers = {})
+    {
+        responses.append(Response{status, body, headers});
+    }
+
+    QList<QByteArray> requests;
+    QList<Response> responses;
+};
+} // namespace
 
 void EditorCoreTests::jsonObjectsOnly()
 {
@@ -91,10 +163,92 @@ void EditorCoreTests::tokenPolicy()
     QString error;
     QVERIFY(!client.configure(QUrl(QStringLiteral("https://forge.example.com")), QByteArray("short"), false, &error));
     QVERIFY(client.configure(QUrl(QStringLiteral("https://forge.example.com")),
-                             QByteArray("ForgeEditor_9M2vK7pQ4xR8sT6wY3nC5aH1dL0uB"), false, &error));
+                             QByteArray("jfe_session_9M2vK7pQ4xR8sT6wY3nC5aH1dL0uB7eF9qA2sD4gH6jK8mN"), false,
+                             &error));
     QVERIFY(client.isConfigured());
     client.clearCredentials();
     QVERIFY(!client.isConfigured());
+}
+
+void EditorCoreTests::accountSessionTransportPolicy()
+{
+    LocalJsonServer server;
+    QVERIFY(server.listen(QHostAddress::LocalHost));
+    const QByteArray token("jfe_session_9M2vK7pQ4xR8sT6wY3nC5aH1dL0uB7eF9qA2sD4gH6jK8mN");
+    server.enqueue(QByteArray("200 OK"),
+                   QJsonDocument(QJsonObject{{QStringLiteral("access_token"), QString::fromUtf8(token)}})
+                       .toJson(QJsonDocument::Compact),
+                   {{QByteArray("Set-Cookie"), QByteArray("ambient=must-not-return; Path=/")}});
+    server.enqueue(QByteArray("200 OK"),
+                   QByteArray(R"({"username":"worker","display_name":"Worker"})"));
+    server.enqueue(QByteArray("302 Found"), QByteArray("{}"),
+                   {{QByteArray("Location"), QByteArray("http://127.0.0.1/credential-sink")}});
+    server.enqueue(QByteArray("401 Unauthorized"), QByteArray(R"({"detail":"expired"})"));
+
+    ApiClient client;
+    QString error;
+    const auto endpoint = QUrl(QStringLiteral("http://127.0.0.1:%1").arg(server.serverPort()));
+    QVERIFY2(client.configureServer(endpoint, true, &error), qPrintable(error));
+    QSignalSpy received(&client, &ApiClient::jsonReceived);
+    QSignalSpy failed(&client, &ApiClient::requestFailed);
+
+    client.login(QStringLiteral("worker"), QStringLiteral("correct horse battery staple"));
+    QTRY_COMPARE_WITH_TIMEOUT(received.size(), 1, 5000);
+    QVERIFY(client.isConfigured());
+    client.fetchProfile();
+    QTRY_COMPARE_WITH_TIMEOUT(received.size(), 2, 5000);
+    QCOMPARE(server.requests.size(), 2);
+    const auto loginRequest = server.requests.at(0).toLower();
+    const auto profileRequest = server.requests.at(1).toLower();
+    QVERIFY(loginRequest.startsWith("post /__forge/editor/v1/auth/login http/1.1\r\n"));
+    QVERIFY(!loginRequest.contains("authorization:"));
+    QVERIFY(!loginRequest.contains("x-forge-editor-token:"));
+    QVERIFY(loginRequest.contains("cache-control: no-store"));
+    QVERIFY(profileRequest.startsWith("get /__forge/editor/v1/me http/1.1\r\n"));
+    QVERIFY(profileRequest.contains(QByteArray("authorization: bearer ") + token.toLower()));
+    QVERIFY(!profileRequest.contains("x-forge-editor-token:"));
+    QVERIFY(!profileRequest.contains("cookie:"));
+
+    client.fetchMembers();
+    QTRY_COMPARE_WITH_TIMEOUT(failed.size(), 1, 5000);
+    QCOMPARE(server.requests.size(), 3);
+    QVERIFY(failed.at(0).at(2).toString().contains(QStringLiteral("Redirects")));
+    QVERIFY(client.isConfigured());
+
+    client.fetchMembers();
+    QTRY_COMPARE_WITH_TIMEOUT(failed.size(), 2, 5000);
+    QCOMPARE(server.requests.size(), 4);
+    QVERIFY(!client.isConfigured());
+}
+
+void EditorCoreTests::callTicketUrlPolicy()
+{
+    ApiClient client;
+    QString error;
+    QVERIFY(client.configure(QUrl(QStringLiteral("https://forge.example.com/admin")),
+                             QByteArray("jfe_session_9M2vK7pQ4xR8sT6wY3nC5aH1dL0uB7eF9qA2sD4gH6jK8mN"), false,
+                             &error));
+    const auto url = client.callClientUrl(QStringLiteral("/__forge/editor/v1/call-client/call-id"),
+                                          QStringLiteral("jfc_one_time_ticket"));
+    QCOMPARE(url.host(), QStringLiteral("forge.example.com"));
+    QCOMPARE(url.path(), QStringLiteral("/admin/__forge/editor/v1/call-client/call-id"));
+    QVERIFY(url.query().isEmpty());
+    QCOMPARE(QUrlQuery(url.fragment()).queryItemValue(QStringLiteral("ticket")),
+             QStringLiteral("jfc_one_time_ticket"));
+    QVERIFY(!client.callClientUrl(QStringLiteral("/../redirect"), QStringLiteral("ticket")).isValid());
+}
+
+void EditorCoreTests::brandAssetAndTheme()
+{
+    const QImage mark(QStringLiteral(":/branding/mark.png"));
+    QVERIFY(!mark.isNull());
+    QVERIFY(mark.hasAlphaChannel());
+    QFile style(QStringLiteral(":/styles/dark.qss"));
+    QVERIFY(style.open(QIODevice::ReadOnly));
+    const auto qss = style.readAll();
+    QVERIFY(qss.contains("#f2b84b"));
+    QVERIFY(qss.contains("#202225"));
+    QVERIFY(!qss.contains("#0c1016"));
 }
 
 void EditorCoreTests::pluginManifestPathPolicy()

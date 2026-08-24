@@ -28,11 +28,17 @@ int main(int argc, char *argv[])
     const QCommandLineOption graphPreviewOption(QStringList{QStringLiteral("graph-preview")},
                                                  QStringLiteral("Open the built-in operation graph preview."));
     parser.addOption(graphPreviewOption);
+    const QCommandLineOption teamPreviewOption(QStringList{QStringLiteral("team-preview")},
+                                                QStringLiteral("Open the server Team Workspace preview."));
+    parser.addOption(teamPreviewOption);
     parser.process(application);
 
     MainWindow window;
     if (parser.isSet(graphPreviewOption)) {
         window.showGraphPreview();
+    }
+    if (parser.isSet(teamPreviewOption)) {
+        window.showTeamPreview();
     }
     const auto screenshotPath = parser.value(screenshotOption);
     const bool renderingPreview = !screenshotPath.isEmpty();

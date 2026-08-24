@@ -18,6 +18,7 @@ class QStackedWidget;
 class QToolBar;
 class QToolButton;
 class QTreeWidget;
+class TeamWorkspace;
 class VisualDesigner;
 
 class MainWindow final : public QMainWindow, public ForgeEditor::EditorHost {
@@ -27,6 +28,7 @@ public:
     explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow() override;
     void showGraphPreview();
+    void showTeamPreview();
 
     void addPaletteComponent(const QString &label, const QString &collection, const QJsonObject &documentTemplate) override;
     void addGraphNodeType(const QString &label, const QString &type, const QJsonObject &defaultProperties) override;
@@ -94,6 +96,8 @@ private:
     QToolBar *m_pluginToolBar = nullptr;
     QDockWidget *m_pythonDock = nullptr;
     PythonSdkPanel *m_pythonPanel = nullptr;
+    QDockWidget *m_teamDock = nullptr;
+    TeamWorkspace *m_teamWorkspace = nullptr;
 
     QAction *m_saveAction = nullptr;
     QAction *m_validateAction = nullptr;

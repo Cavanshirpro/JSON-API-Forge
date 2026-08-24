@@ -28,6 +28,7 @@ jobs:
       - uses: jurplel/install-qt-action@v4
         with:
           version: "6.8.3"
+          modules: qtwebengine
           cache: true
       - uses: github/codeql-action/init@v4
         with:

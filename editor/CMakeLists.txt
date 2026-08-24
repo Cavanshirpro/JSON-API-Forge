@@ -10,6 +10,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(FORGE_EDITOR_QT_MIN_VERSION "6.4" CACHE STRING "Minimum supported Qt version")
 find_package(Qt6 ${FORGE_EDITOR_QT_MIN_VERSION} REQUIRED COMPONENTS Core Gui Widgets Network)
+find_package(Qt6 ${FORGE_EDITOR_QT_MIN_VERSION} QUIET COMPONENTS WebEngineWidgets)
 option(FORGE_EDITOR_WARNINGS_AS_ERRORS "Treat editor compiler warnings as errors" OFF)
 
 function(forge_editor_enable_warnings target)
@@ -50,12 +51,18 @@ add_library(forge_editor_core STATIC
   src/PythonSdkPanel.hpp
   src/TemplateManager.cpp
   src/TemplateManager.hpp
+  src/TeamWorkspace.cpp
+  src/TeamWorkspace.hpp
   src/VisualDesigner.cpp
   src/VisualDesigner.hpp
   include/forgeeditor/IEditorPlugin.hpp
 )
 target_include_directories(forge_editor_core PUBLIC include src)
 target_link_libraries(forge_editor_core PUBLIC Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network)
+if(TARGET Qt6::WebEngineWidgets)
+  target_link_libraries(forge_editor_core PUBLIC Qt6::WebEngineWidgets)
+  target_compile_definitions(forge_editor_core PUBLIC FORGE_EDITOR_HAS_WEBENGINE=1)
+endif()
 target_compile_definitions(forge_editor_core PUBLIC QT_NO_CAST_FROM_ASCII QT_NO_CAST_TO_ASCII)
 
 forge_editor_enable_warnings(forge_editor_core)

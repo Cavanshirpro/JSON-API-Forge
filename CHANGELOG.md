@@ -6,6 +6,7 @@
 - Replaced the remotely reusable shared Editor credential with one-time founder setup, invitation enrollment, scrypt password hashes, expiring/revocable sessions and persistent login throttling; legacy-token compatibility is explicitly disabled in production.
 - Added immutable built-in ranks plus bounded custom roles, project/document/database scopes, protected founder authority and security audit records.
 - Added worker profiles, open/restricted project spaces, team messages, private/scoped notes, bounded attachments and one-time-ticket WebRTC audio/video signaling.
+- Added the Editor's operational Team Workspace for profile editing, custom roles, worker membership control, area file upload/download, notes, chat, calls, database rows and audit inspection.
 - Added metadata-aware, policy-filtered, read-only database browsing; raw SQL and undeclared support tables remain unavailable by default.
 - Added configurable, validated STUN/TURN policy and a switch to disable founder setup/remove its secret after first use.
 - Added bounded, schema-versioned `graphs/*.forgegraph.json` documents behind an independent Editor policy, including exact-field, path, fan-in and cycle validation.

@@ -77,15 +77,15 @@ void CodeEditor::resizeEvent(QResizeEvent *event)
 void CodeEditor::paintLineNumberArea(QPaintEvent *event)
 {
     QPainter painter(m_lineNumberArea);
-    painter.fillRect(event->rect(), QColor(QStringLiteral("#10141b")));
+    painter.fillRect(event->rect(), QColor(QStringLiteral("#1a1b1e")));
     auto block = firstVisibleBlock();
     int blockNumber = block.blockNumber();
     int top = qRound(blockBoundingGeometry(block).translated(contentOffset()).top());
     int bottom = top + qRound(blockBoundingRect(block).height());
     while (block.isValid() && top <= event->rect().bottom()) {
         if (block.isVisible() && bottom >= event->rect().top()) {
-            painter.setPen(blockNumber == textCursor().blockNumber() ? QColor(QStringLiteral("#f5b94c"))
-                                                                    : QColor(QStringLiteral("#657083")));
+            painter.setPen(blockNumber == textCursor().blockNumber() ? QColor(QStringLiteral("#f2b84b"))
+                                                                    : QColor(QStringLiteral("#85878d")));
             painter.drawText(0, top, m_lineNumberArea->width() - 7, fontMetrics().height(), Qt::AlignRight,
                              QString::number(blockNumber + 1));
         }
@@ -99,7 +99,7 @@ void CodeEditor::paintLineNumberArea(QPaintEvent *event)
 void CodeEditor::highlightCurrentLine()
 {
     QTextEdit::ExtraSelection selection;
-    selection.format.setBackground(QColor(QStringLiteral("#1b222d")));
+    selection.format.setBackground(QColor(QStringLiteral("#32353a")));
     selection.format.setProperty(QTextFormat::FullWidthSelection, true);
     selection.cursor = textCursor();
     selection.cursor.clearSelection();

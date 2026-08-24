@@ -70,7 +70,7 @@ QColor nodeColor(const QString &type)
     if (type.startsWith(QStringLiteral("response."))) {
         return QColor(QStringLiteral("#ff7c91"));
     }
-    return QColor(QStringLiteral("#f5b94c"));
+    return QColor(QStringLiteral("#f2b84b"));
 }
 
 class GraphNodeItem final : public QGraphicsItem {
@@ -119,8 +119,8 @@ protected:
     {
         painter->setRenderHint(QPainter::Antialiasing);
         const auto accent = nodeColor(m_type);
-        const auto body = isSelected() ? QColor(QStringLiteral("#202a37")) : QColor(QStringLiteral("#171f2a"));
-        painter->setPen(QPen(isSelected() ? accent : QColor(QStringLiteral("#354253")), isSelected() ? 2.0 : 1.0));
+        const auto body = isSelected() ? QColor(QStringLiteral("#36393f")) : QColor(QStringLiteral("#292b2f"));
+        painter->setPen(QPen(isSelected() ? accent : QColor(QStringLiteral("#52565e")), isSelected() ? 2.0 : 1.0));
         painter->setBrush(body);
         painter->drawRoundedRect(boundingRect().adjusted(1.0, 1.0, -1.0, -1.0), 10.0, 10.0);
 
@@ -129,13 +129,13 @@ protected:
         painter->setClipRect(QRectF(1.0, 1.0, NodeWidth - 2.0, HeaderHeight));
         QLinearGradient gradient(0.0, 0.0, NodeWidth, 0.0);
         gradient.setColorAt(0.0, accent.darker(180));
-        gradient.setColorAt(1.0, QColor(QStringLiteral("#202833")));
+        gradient.setColorAt(1.0, QColor(QStringLiteral("#34373c")));
         painter->setPen(Qt::NoPen);
         painter->setBrush(gradient);
         painter->drawPath(header);
         painter->setClipping(false);
 
-        painter->setPen(QColor(QStringLiteral("#f4f6f9")));
+        painter->setPen(QColor(QStringLiteral("#f8f4eb")));
         QFont titleFont = painter->font();
         titleFont.setBold(true);
         titleFont.setPointSizeF(10.0);
@@ -147,13 +147,13 @@ protected:
         typeFont.setBold(false);
         typeFont.setPointSizeF(8.0);
         painter->setFont(typeFont);
-        painter->setPen(QColor(QStringLiteral("#8996a7")));
+        painter->setPen(QColor(QStringLiteral("#a8a9ac")));
         painter->drawText(QRectF(14.0, 48.0, NodeWidth - 28.0, 20.0), Qt::AlignLeft | Qt::AlignVCenter, m_type);
-        painter->setPen(QColor(QStringLiteral("#657386")));
+        painter->setPen(QColor(QStringLiteral("#85878e")));
         painter->drawText(QRectF(14.0, 82.0, NodeWidth - 28.0, 22.0), Qt::AlignCenter,
                           QStringLiteral("Double-click properties to configure"));
 
-        painter->setPen(QPen(QColor(QStringLiteral("#0b0f14")), 2.0));
+        painter->setPen(QPen(QColor(QStringLiteral("#151619")), 2.0));
         painter->setBrush(accent);
         if (hasInput()) {
             painter->drawEllipse(QPointF(0.0, 76.0), 7.0, 7.0);
@@ -192,7 +192,7 @@ public:
         QPainterPath wire(start);
         wire.cubicTo(start + QPointF(distance, 0.0), end - QPointF(distance, 0.0), end);
         setPath(wire);
-        setPen(QPen(isSelected() ? QColor(QStringLiteral("#ffd477")) : QColor(QStringLiteral("#8a9bb0")),
+        setPen(QPen(isSelected() ? QColor(QStringLiteral("#ffd071")) : QColor(QStringLiteral("#9fa1a6")),
                     isSelected() ? 3.0 : 2.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
     }
 
@@ -250,7 +250,7 @@ public:
 protected:
     void drawBackground(QPainter *painter, const QRectF &rect) override
     {
-        painter->fillRect(rect, QColor(QStringLiteral("#0d131a")));
+        painter->fillRect(rect, QColor(QStringLiteral("#1a1b1e")));
         const int minor = 20;
         const int major = 100;
         const qreal left = std::floor(rect.left() / minor) * minor;
@@ -263,9 +263,9 @@ protected:
         for (qreal y = top; y < rect.bottom(); y += minor) {
             (static_cast<int>(std::abs(y)) % major == 0 ? majorLines : minorLines).append(QLineF(rect.left(), y, rect.right(), y));
         }
-        painter->setPen(QPen(QColor(QStringLiteral("#141d27")), 0.0));
+        painter->setPen(QPen(QColor(QStringLiteral("#25272b")), 0.0));
         painter->drawLines(minorLines);
-        painter->setPen(QPen(QColor(QStringLiteral("#1c2834")), 0.0));
+        painter->setPen(QPen(QColor(QStringLiteral("#35383d")), 0.0));
         painter->drawLines(majorLines);
     }
 
@@ -330,7 +330,7 @@ protected:
         auto *node = dynamic_cast<GraphNodeItem *>(itemAt(event->position().toPoint()));
         if (event->button() == Qt::LeftButton && node != nullptr && node->outputHit(scenePosition)) {
             m_wireSource = node;
-            m_previewWire = scene()->addPath(QPainterPath(), QPen(QColor(QStringLiteral("#f5b94c")), 2.0, Qt::DashLine));
+            m_previewWire = scene()->addPath(QPainterPath(), QPen(QColor(QStringLiteral("#f2b84b")), 2.0, Qt::DashLine));
             m_previewWire->setZValue(0.5);
             updatePreviewWire(scenePosition);
             event->accept();

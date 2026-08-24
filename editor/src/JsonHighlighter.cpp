@@ -17,7 +17,7 @@ JsonHighlighter::JsonHighlighter(QTextDocument *document)
     : QSyntaxHighlighter(document)
 {
     m_rules = {
-        {QRegularExpression(QStringLiteral(R"("(?:\\.|[^"\\])*"(?=\s*:))")), makeFormat("#f5b94c", QFont::DemiBold)},
+        {QRegularExpression(QStringLiteral(R"("(?:\\.|[^"\\])*"(?=\s*:))")), makeFormat("#f2b84b", QFont::DemiBold)},
         {QRegularExpression(QStringLiteral(R"("(?:\\.|[^"\\])*")")), makeFormat("#8bd5ca")},
         {QRegularExpression(QStringLiteral(R"(\b-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?\b)")), makeFormat("#c6a0f6")},
         {QRegularExpression(QStringLiteral(R"(\b(?:true|false|null)\b)")), makeFormat("#ed8796", QFont::DemiBold)},

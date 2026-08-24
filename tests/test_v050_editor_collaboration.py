@@ -120,6 +120,7 @@ def test_account_bootstrap_roles_invitations_and_project_scopes(tmp_path: Path) 
         assert capabilities["api_version"] == 2
         assert capabilities["database_browser"] and capabilities["collaboration"] and capabilities["calls"]
         assert capabilities["cross_process_locking"] is True
+        assert "roles.manage" in capabilities["permission_catalog"]
 
         invitation = client.post(
             "/__forge/editor/v1/invitations",

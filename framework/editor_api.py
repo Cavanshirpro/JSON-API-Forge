@@ -26,7 +26,7 @@ from .config import _load_project_dir
 from .doctor import is_weak_secret
 from .editor_call_client import call_client_page, parse_ice_servers
 from .editor_database import browse_rows, database_catalog
-from .editor_identity import EditorAccess, EditorIdentityStore, EditorPrincipal
+from .editor_identity import EDITOR_PERMISSIONS, EditorAccess, EditorIdentityStore, EditorPrincipal
 from .protection import client_ip, host_allowed, ip_allowed, request_is_https
 from .runtime import ProjectRuntime
 from .settings import Settings
@@ -762,6 +762,7 @@ def register_editor_api(
             "optimistic_concurrency": "sha256",
             "cross_process_locking": True,
             "permissions": sorted(access.permissions),
+            "permission_catalog": sorted(EDITOR_PERMISSIONS) if access.permits("roles.manage") else [],
             "roles": sorted(access.role_names),
             "rank": access.rank,
         }

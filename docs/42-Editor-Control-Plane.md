@@ -62,7 +62,7 @@ Authenticated members have server-side profiles and can use:
 - attachment uploads stored outside application configuration with random storage names and SHA-256 metadata;
 - an Editor audit stream for sensitive management actions.
 
-Attachments are always downloaded with attachment disposition and `nosniff`. The configured attachment root may not be a symlink. Do not place it under a public web root.
+Visible-area members can list attachment metadata, but the random server storage name is never exposed. Attachments are always downloaded through the authorized endpoint with attachment disposition and `nosniff`. The configured attachment root may not be a symlink. Do not place it under a public web root.
 
 ## Voice and video
 

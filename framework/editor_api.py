@@ -1112,6 +1112,15 @@ def register_editor_api(
         )
         return metadata
 
+    @router.get("/areas/{area_id}/attachments")
+    async def attachments(area_id: str, request: Request, limit: int = 100):
+        principal = await principal_for(request)
+        project = await store_for(request).area_project(area_id)
+        access = await access_for_principal(request, principal, "attachments.read", project)
+        if not 1 <= limit <= 200:
+            raise HTTPException(status_code=422, detail="Attachment limit must be between 1 and 200")
+        return {"attachments": await store_for(request).list_attachments(access, area_id, limit=limit)}
+
     @router.get("/attachments/{attachment_id}", response_class=FileResponse)
     async def download_attachment(attachment_id: str, request: Request):
         principal = await principal_for(request)

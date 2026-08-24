@@ -27,6 +27,28 @@ async with AsyncForgeClient("https://forge.example.com", api_key="...") as forge
 
 The sync and async clients support health/metadata, CRUD and operations plus the general `request` method. Nested resource paths such as `gaming/leaderboard` are supported. URL-safe item IDs and project/path segments are percent encoded; slash, backslash, traversal and control characters are rejected as ambiguous routing input.
 
+## Secure Editor control-plane client
+
+`EditorControlPlaneClient` and `AsyncEditorControlPlaneClient` expose the v0.5.0 account/team surface without reusing application API keys:
+
+```python
+from json_api_forge import EditorControlPlaneClient
+
+with EditorControlPlaneClient("https://forge-admin.example.com") as control:
+    signed_in = control.login("worker.name", "password-from-a-secret-prompt")
+    print(signed_in.data["profile"])
+
+    for project in control.projects().data["projects"]:
+        print(project["directory"])
+
+    rows = control.database_rows("Billing", "primary", "invoices", limit=50)
+    control.post_message("project-area-id", f"Reviewed {len(rows.data['rows'])} invoices")
+```
+
+The clients cover one-time founder setup, invitation enrollment, profile changes, roles, memberships, projects/documents, validation, the read-only database browser, areas/messages, notes, bounded attachments, call tickets and audit events. Authentication responses are adopted internally and returned without `access_token`, reducing accidental token logging. The session lives in a zeroable memory buffer and is cleared on logout, close or HTTP 401.
+
+Management requests never inherit environment proxies, follow redirects, retain cookies or use an HTTP cache. Attachment sources reject symlinks and size overflow; downloads are bounded and atomically replace only the explicit destination. WebRTC tickets can be converted to a same-origin call URL with the ticket in the URL fragment, never the HTTP query.
+
 ## Large systems
 
 `ForgeCluster` and `AsyncForgeCluster` route across multiple Forge deployments, support deterministic rendezvous routing, bounded failover circuit breakers, per-endpoint health inspection and order-preserving bulk work. Retries are opt-in through `RetryPolicy`; POST requests are never retried or failed over unless an idempotency key is supplied. One request ID is preserved across permitted endpoint attempts so traces remain correlated.
@@ -77,6 +99,7 @@ with YoungLionForgeClient.connect("https://forge.example.com", api_key="...") as
 - HTTPS is required. `allow_insecure_http=True` permits HTTP only for a loopback server.
 - Embedded URL credentials, cross-host request URLs, fragments and traversal segments are rejected.
 - Redirects and ambient `HTTP_PROXY`/`HTTPS_PROXY` inheritance are disabled.
+- Clients discard server cookies between requests; Editor bearer/setup credentials remain separate from application API keys.
 - Response bodies are limited to 8 MiB by default; customize `max_response_bytes` deliberately.
 - Error responses raise `ForgeHTTPError` and preserve status, detail, server request ID and `Retry-After`.
 - Connection failures raise `ForgeTransportError`; oversized bodies raise `ForgeResponseTooLarge`.
@@ -94,4 +117,6 @@ python -m build
 python -m twine check dist/*
 ```
 
-The branch workflow validates synchronized/tag versions, tests Python 3.11–3.14 across Linux x64/ARM64, Windows 2022/2025 and macOS Intel/ARM64, runs branch-aware critical coverage gates, compares two clean wheel builds byte-for-byte, compares two sdist payloads, installs the wheel outside the checkout, verifies `py.typed`, creates SHA-256 checksums and uploads one release bundle. Checkout credentials are not persisted. It never publishes to PyPI or creates a GitHub release.
+Following the YoungLion distribution pattern, the branch workflow validates synchronized/tag versions, tests Python 3.11–3.14 across Linux x64/ARM64, Windows 2022/2025/ARM64 and macOS Intel/ARM64, then performs clean PEP 517 installs in Debian, Arch, Fedora, Rocky Linux 9 (the cPanel family), openSUSE and Alpine/musl containers. It also runs branch-aware coverage gates, compares two clean wheel builds byte-for-byte, compares two sdist payloads, installs the wheel outside the checkout, verifies `py.typed`, creates SHA-256 checksums and uploads one release bundle. Checkout credentials are not persisted. It never publishes to PyPI or creates a GitHub release.
+
+The Python package remains pure Python (`py3-none-any`), so a native extension would add platform risk without improving this I/O-bound client. Native frozen `forge` and `forge-server` commands are built by the main branch and downloaded by its checksum-verifying release installers.

@@ -41,7 +41,7 @@ Fragments are merged alphabetically and then validated by strict Pydantic models
 - The control plane uses one-time founder setup, hashed worker credentials, expiring sessions, ranked/scoped roles, project/document/database policy and append-only audit records; the shared-token mode is development-only compatibility.
 - The `Editor` branch adds a C++20/Qt 6 node-and-wire graph, code/typed visual modes, account/team/database workspaces, Amber Gold + Graphite Gray branding, eight atomic templates, Python SDK integration and a digest-verified Plugin API v2.
 - The Editor can browse plugin release records from a normal Forge resource; it validates metadata and never silently installs or executes catalog code.
-- The `python-library` branch adds sync/async retry observability, bounded pagination/bulk work, multi-region routing, circuit breakers and safe failover. Optional `[younglion]` and `[ddm]` extras keep those integrations lazy.
+- The `python-library` branch adds sync/async retry observability, bounded pagination/bulk work, multi-region routing, circuit breakers, safe failover and separate account/team control-plane clients. Optional `[younglion]` and `[ddm]` extras keep those integrations lazy.
 - The `exampleApps` branch contains 25 named applications with schema, CRUD, RPC, idempotency, realtime and graph smoke coverage.
 - The v0.4.2 discovery, authorization, concurrency, proxy, credential and control-plane hardening remains in force.
 - Python 3.11–3.14, live PostgreSQL 17/Redis 8/MongoDB 8, package, TypeScript, container, manifest and CodeQL gates remain required.
@@ -80,7 +80,7 @@ with ForgeClient("https://api.example.com", api_key="...") as forge:
     )
 ```
 
-Use `AsyncForgeClient` with `async with` for asyncio applications. Both clients reject cross-host paths, disable environment proxy inheritance, do not follow redirects, bound response bodies and expose request ID/cache/idempotent-replay metadata. See [`PYTHON_LIBRARY.md`](PYTHON_LIBRARY.md).
+Use `AsyncForgeClient` with `async with` for asyncio applications. `EditorControlPlaneClient` and `AsyncEditorControlPlaneClient` separately cover profiles, ranked roles/scopes, documents, database browsing and team collaboration without accepting application API keys. All clients reject cross-host paths, disable environment proxy inheritance, do not follow redirects, bound response bodies and expose request metadata. See [`PYTHON_LIBRARY.md`](PYTHON_LIBRARY.md).
 
 ## Core model
 

@@ -17,6 +17,7 @@
 - Added safe sync/async retries with stable request IDs, bounded pagination and attempt observers.
 - Added multi-region sync/async clusters with rendezvous routing, circuit breakers, bounded bulk execution and idempotency-gated write failover.
 - Added lazy YoungLion/DDM adapters and package extras named `[younglion]` and `[ddm]`.
+- Added sync/async account control-plane clients for profiles, ranks, scopes, documents, databases, collaboration, bounded files, calls and audit without exposing adopted bearer tokens.
 
 ### Examples and delivery
 - Expanded `exampleApps` to 25 named systems with deterministic generation and schema, CRUD, RPC, idempotency, realtime and graph smoke coverage.

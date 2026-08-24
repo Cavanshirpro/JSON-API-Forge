@@ -204,28 +204,40 @@ class ForgeClient:
         path: str,
         *,
         json_body: Any = None,
+        files: Mapping[str, Any] | None = None,
         params: Mapping[str, Any] | None = None,
         headers: Mapping[str, str] | None = None,
         request_id: str | None = None,
         idempotency_key: str | None = None,
         expect_json: bool = True,
+        max_response_bytes: int | None = None,
     ) -> ForgeResponse[Any]:
         normalized_method = method.upper()
         normalized_path = _relative_path(path)
+        if json_body is not None and files is not None:
+            raise ValueError("json_body and files cannot be sent together")
+        response_limit = self.max_response_bytes if max_response_bytes is None else int(max_response_bytes)
+        if response_limit < 1024:
+            raise ValueError("max_response_bytes must be at least 1024")
         effective_request_id = request_id or str(uuid.uuid4())
         attempt = 0
         while True:
             attempt += 1
             started = time.monotonic()
             try:
-                with self._client.stream(
-                    normalized_method,
-                    normalized_path,
-                    json=json_body,
-                    params=params,
-                    headers=_headers(self.api_key, effective_request_id, idempotency_key, headers),
-                ) as response:
-                    content = _bounded_content(response, self.max_response_bytes)
+                self._client.cookies.clear()
+                try:
+                    with self._client.stream(
+                        normalized_method,
+                        normalized_path,
+                        json=json_body,
+                        files=files,
+                        params=params,
+                        headers=_headers(self.api_key, effective_request_id, idempotency_key, headers),
+                    ) as response:
+                        content = _bounded_content(response, response_limit)
+                finally:
+                    self._client.cookies.clear()
                 result = _decode_response(response, content, expect_json=expect_json)
             except ForgeResponseTooLarge as exc:
                 _notify(
@@ -249,6 +261,7 @@ class ForgeClient:
                 policy = self.retry_policy
                 if (
                     policy is None
+                    or files is not None
                     or attempt >= policy.max_attempts
                     or exc.status_code not in policy.retry_statuses
                     or not policy.permits(normalized_method, idempotency_key=idempotency_key)
@@ -265,6 +278,7 @@ class ForgeClient:
                 policy = self.retry_policy
                 if (
                     policy is None
+                    or files is not None
                     or attempt >= policy.max_attempts
                     or not policy.permits(normalized_method, idempotency_key=idempotency_key)
                 ):
@@ -401,28 +415,40 @@ class AsyncForgeClient:
         path: str,
         *,
         json_body: Any = None,
+        files: Mapping[str, Any] | None = None,
         params: Mapping[str, Any] | None = None,
         headers: Mapping[str, str] | None = None,
         request_id: str | None = None,
         idempotency_key: str | None = None,
         expect_json: bool = True,
+        max_response_bytes: int | None = None,
     ) -> ForgeResponse[Any]:
         normalized_method = method.upper()
         normalized_path = _relative_path(path)
+        if json_body is not None and files is not None:
+            raise ValueError("json_body and files cannot be sent together")
+        response_limit = self.max_response_bytes if max_response_bytes is None else int(max_response_bytes)
+        if response_limit < 1024:
+            raise ValueError("max_response_bytes must be at least 1024")
         effective_request_id = request_id or str(uuid.uuid4())
         attempt = 0
         while True:
             attempt += 1
             started = time.monotonic()
             try:
-                async with self._client.stream(
-                    normalized_method,
-                    normalized_path,
-                    json=json_body,
-                    params=params,
-                    headers=_headers(self.api_key, effective_request_id, idempotency_key, headers),
-                ) as response:
-                    content = await _bounded_content_async(response, self.max_response_bytes)
+                self._client.cookies.clear()
+                try:
+                    async with self._client.stream(
+                        normalized_method,
+                        normalized_path,
+                        json=json_body,
+                        files=files,
+                        params=params,
+                        headers=_headers(self.api_key, effective_request_id, idempotency_key, headers),
+                    ) as response:
+                        content = await _bounded_content_async(response, response_limit)
+                finally:
+                    self._client.cookies.clear()
                 result = _decode_response(response, content, expect_json=expect_json)
             except ForgeResponseTooLarge as exc:
                 _notify(
@@ -446,6 +472,7 @@ class AsyncForgeClient:
                 policy = self.retry_policy
                 if (
                     policy is None
+                    or files is not None
                     or attempt >= policy.max_attempts
                     or exc.status_code not in policy.retry_statuses
                     or not policy.permits(normalized_method, idempotency_key=idempotency_key)
@@ -462,6 +489,7 @@ class AsyncForgeClient:
                 policy = self.retry_policy
                 if (
                     policy is None
+                    or files is not None
                     or attempt >= policy.max_attempts
                     or not policy.permits(normalized_method, idempotency_key=idempotency_key)
                 ):

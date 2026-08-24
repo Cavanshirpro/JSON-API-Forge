@@ -24,6 +24,10 @@ class ForgeIntegrationError(ForgeError):
     """An optional integration is missing or returned an incompatible value."""
 
 
+class ForgeSessionError(ForgeError):
+    """The Editor control-plane session is missing or malformed."""
+
+
 @dataclass(slots=True)
 class ForgeHTTPError(ForgeError):
     status_code: int

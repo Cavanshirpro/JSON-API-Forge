@@ -1188,6 +1188,36 @@ class EditorIdentityStore:
             "created_at": now,
         }
 
+    async def list_attachments(self, access: EditorAccess, area_id: str, *, limit: int) -> list[dict[str, Any]]:
+        await self.visible_area(access, area_id)
+        statement = (
+            select(editor_attachments, editor_users.c.display_name, editor_users.c.username)
+            .join(editor_users, editor_users.c.id == editor_attachments.c.uploader_id)
+            .where(editor_attachments.c.area_id == area_id)
+            .order_by(editor_attachments.c.created_at.desc())
+            .limit(limit)
+        )
+        async with self.engine.connect() as connection:
+            rows = (await connection.execute(statement)).mappings().all()
+        return [
+            {
+                key: row[key]
+                for key in (
+                    "id",
+                    "area_id",
+                    "uploader_id",
+                    "display_name",
+                    "username",
+                    "original_name",
+                    "content_type",
+                    "size",
+                    "sha256",
+                    "created_at",
+                )
+            }
+            for row in rows
+        ]
+
     async def attachment(self, access: EditorAccess, attachment_id: str) -> dict[str, Any]:
         async with self.engine.connect() as connection:
             row = (await connection.execute(select(editor_attachments).where(editor_attachments.c.id == attachment_id))).mappings().first()

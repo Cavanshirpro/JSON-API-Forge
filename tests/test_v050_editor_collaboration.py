@@ -218,6 +218,12 @@ def test_login_throttle_profile_collaboration_files_and_calls(tmp_path: Path) ->
         )
         assert uploaded.status_code == 201, uploaded.text
         attachment_id = uploaded.json()["id"]
+        attachments = client.get(f"/__forge/editor/v1/areas/{area_id}/attachments", headers=headers)
+        assert attachments.status_code == 200
+        listed = attachments.json()["attachments"]
+        assert listed[0]["id"] == attachment_id
+        assert listed[0]["original_name"] == "plan.txt"
+        assert "stored_name" not in listed[0]
         downloaded = client.get(f"/__forge/editor/v1/attachments/{attachment_id}", headers=headers)
         assert downloaded.content == b"signed migration plan"
         assert "attachment" in downloaded.headers["content-disposition"].lower()

@@ -1,0 +1,56 @@
+name: Bug report
+description: Report a reproducible defect in the JSON API Forge Python SDK
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include secrets or undisclosed vulnerability details here. Use SECURITY.md for security issues.
+  - type: input
+    id: version
+    attributes:
+      label: SDK version
+      placeholder: 0.5.0
+    validations:
+      required: true
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      placeholder: 3.x
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Client platform
+      options:
+        - Linux x64
+        - Linux ARM64
+        - Windows x64
+        - Windows ARM64
+        - macOS Intel
+        - macOS Apple Silicon
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Describe the observed and expected behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Minimal reproduction
+      description: Include client code and sanitized response details with all secrets removed.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or traceback
+      render: shell

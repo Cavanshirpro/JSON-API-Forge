@@ -1,0 +1,59 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "json-api-forge-client"
+version = "0.5.0"
+description = "Typed sync/async client and Editor control-plane SDK for JSON API Forge"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{name = "Cavanşir Qurbanzadə"}]
+license = "LicenseRef-JAF-SASH-1.1"
+license-files = ["LICENSE", "LICENSE-FAQ.md", "NOTICE.md"]
+keywords = ["api", "json", "client", "sdk", "httpx", "json-api-forge"]
+classifiers = [
+  "Development Status :: 3 - Alpha", "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11", "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13", "Programming Language :: Python :: 3.14",
+  "Operating System :: OS Independent", "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = ["httpx>=0.28,<1.0"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.3,<10.0", "pytest-asyncio>=0.25,<2.0", "pytest-cov>=6.0,<8.0", "ruff>=0.12,<1.0", "build>=1.2,<2.0", "twine>=6,<7"]
+younglion = ["YoungLion>=0.1.0,<0.2"]
+ddm = ["YoungLion>=0.1.0,<0.2"]
+
+[project.urls]
+Homepage = "https://github.com/Cavanshirpro/JSON-API-Forge"
+Repository = "https://github.com/Cavanshirpro/JSON-API-Forge"
+Issues = "https://github.com/Cavanshirpro/JSON-API-Forge/issues"
+
+[tool.setuptools.packages.find]
+include = ["json_api_forge*"]
+
+[tool.setuptools.package-data]
+json_api_forge = ["py.typed"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.coverage.run]
+branch = true
+source = ["json_api_forge"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+fail_under = 75
+
+[tool.ruff]
+target-version = "py311"
+line-length = 140
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501", "B008"]

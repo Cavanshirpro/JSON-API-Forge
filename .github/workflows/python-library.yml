@@ -1,0 +1,331 @@
+name: Python SDK build
+
+on:
+  push:
+    branches: [python-library]
+    tags: ["v0.5.*"]
+  pull_request:
+    branches: [python-library]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: python-sdk-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preflight:
+    name: SDK ownership, version and lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.14"
+          cache: pip
+      - name: Verify the python-library branch contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          import pathlib
+          import re
+          import subprocess
+          import tomllib
+
+          root = pathlib.Path.cwd()
+          forbidden = {
+              ".dockerignore", ".env.example", "Dockerfile", "Makefile", "app", "clients",
+              "deploy", "docker-compose.example.yml", "docs", "editor", "forge.py", "framework",
+              "main.py", "passenger_wsgi.py", "requirements.txt", "run.py", "schemas",
+          }
+          present = sorted(path for path in forbidden if (root / path).exists())
+          if present:
+              raise SystemExit(f"python-library contains non-SDK paths: {present}")
+          unexpected_workflows = sorted(
+              path.name for path in (root / ".github/workflows").glob("*.yml")
+              if path.name not in {"python-library.yml", "codeql.yml"}
+          )
+          if unexpected_workflows:
+              raise SystemExit(f"python-library contains unrelated workflows: {unexpected_workflows}")
+          project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+          scope = {}
+          exec((root / "json_api_forge/_version.py").read_text(encoding="utf-8"), scope)
+          versions = {project["version"], (root / "VERSION").read_text(encoding="utf-8").strip(), scope["__version__"]}
+          if project["name"] != "json-api-forge-client" or versions != {"0.5.0"}:
+              raise SystemExit(f"SDK identity/version mismatch: {project['name']=}, {versions=}")
+          if os.environ.get("GITHUB_REF_TYPE") == "tag" and os.environ.get("GITHUB_REF_NAME") != f"v{project['version']}":
+              raise SystemExit("tag does not match the SDK version")
+          required = {
+              "json_api_forge/control_plane.py", "json_api_forge/py.typed",
+              "tests/test_python_control_plane.py", "contract-tests/test_against_main.py",
+          }
+          missing = sorted(path for path in required if not (root / path).is_file())
+          if missing:
+              raise SystemExit(f"required SDK files are missing: {missing}")
+          links = [
+              line.split(maxsplit=3)[-1]
+              for line in subprocess.check_output(["git", "ls-files", "-s"], text=True).splitlines()
+              if line.startswith("120000 ")
+          ]
+          if links:
+              raise SystemExit(f"symlinks are not allowed in SDK source: {links}")
+          unpinned = []
+          for workflow in (root / ".github/workflows").glob("*.yml"):
+              for number, line in enumerate(workflow.read_text(encoding="utf-8").splitlines(), 1):
+                  match = re.search(r"\buses:\s*[^@\s]+@([^\s#]+)", line)
+                  if match and not re.fullmatch(r"[0-9a-f]{40}", match.group(1)):
+                      unpinned.append(f"{workflow}:{number}: {match.group(1)}")
+          if unpinned:
+              raise SystemExit(f"workflow actions must use immutable commit SHAs: {unpinned}")
+          PY
+      - name: Install development dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]" "bandit>=1.9,<2" "pip-audit>=2.10,<3"
+      - name: Lint, format, compile and manifest
+        run: |
+          ruff format --check json_api_forge tests contract-tests scripts
+          ruff check json_api_forge tests contract-tests scripts
+          python -m compileall -q json_api_forge tests contract-tests scripts
+          python scripts/check_manifest.py
+          python -m pip check
+          bandit -q -ll -r json_api_forge
+          pip-audit --local --skip-editable
+
+  test:
+    name: ${{ matrix.label }} / Python ${{ matrix.python }}
+    needs: preflight
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {label: Linux x64, os: ubuntu-24.04, python: "3.11"}
+          - {label: Linux x64, os: ubuntu-24.04, python: "3.12"}
+          - {label: Linux x64, os: ubuntu-24.04, python: "3.13"}
+          - {label: Linux x64, os: ubuntu-24.04, python: "3.14"}
+          - {label: Linux ARM64, os: ubuntu-24.04-arm, python: "3.11"}
+          - {label: Linux ARM64, os: ubuntu-24.04-arm, python: "3.14"}
+          - {label: Windows x64, os: windows-2022, python: "3.11"}
+          - {label: Windows x64, os: windows-2025, python: "3.14"}
+          - {label: Windows ARM64, os: windows-11-arm, python: "3.14"}
+          - {label: macOS Intel, os: macos-15-intel, python: "3.11"}
+          - {label: macOS Intel, os: macos-15-intel, python: "3.14"}
+          - {label: macOS Apple Silicon, os: macos-15, python: "3.11"}
+          - {label: macOS Apple Silicon, os: macos-15, python: "3.14"}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]"
+      - run: python -m pytest -q tests
+      - run: python -m pip check
+
+  contract:
+    name: SDK contract against main
+    needs: preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          path: sdk
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+          path: server-source
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: |
+            sdk/pyproject.toml
+            server-source/pyproject.toml
+      - name: Install both independently owned packages
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e "./server-source[dev]" -e "./sdk[dev]"
+          python -m pip check
+      - name: Exercise the SDK against the real main control plane
+        run: python -m pytest -q sdk/contract-tests/test_against_main.py
+
+  platform-installs:
+    name: PEP 517 / ${{ matrix.distro }}
+    needs: preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - distro: Debian stable
+            image: debian:stable-slim
+            python_cmd: python3
+            install: apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends python3 python3-venv python3-pip ca-certificates
+          - distro: Arch Linux
+            image: archlinux:base-devel
+            python_cmd: python
+            install: pacman -Syu --noconfirm python python-pip ca-certificates
+          - distro: Fedora
+            image: fedora:latest
+            python_cmd: python3
+            install: dnf install -y python3 python3-pip ca-certificates
+          - distro: Rocky Linux 9 / cPanel family
+            image: rockylinux:9
+            python_cmd: python3.11
+            install: dnf install -y python3.11 python3.11-pip ca-certificates
+          - distro: openSUSE Tumbleweed
+            image: opensuse/tumbleweed
+            python_cmd: python3
+            install: zypper --non-interactive install python3 python3-pip ca-certificates
+          - distro: Alpine musl
+            image: alpine:latest
+            python_cmd: python3
+            install: apk add --no-cache python3 py3-pip ca-certificates
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Build, install and import in the target distribution
+        shell: bash
+        env:
+          IMAGE: ${{ matrix.image }}
+          INSTALL: ${{ matrix.install }}
+          PYTHON_CMD: ${{ matrix.python_cmd }}
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            -e INSTALL="$INSTALL" \
+            -e PYTHON_CMD="$PYTHON_CMD" \
+            -v "$PWD:/source:ro" \
+            "$IMAGE" \
+            /bin/sh -lc '
+              set -eu
+              sh -lc "$INSTALL"
+              cp -a /source /work
+              cd /work
+              "$PYTHON_CMD" -m venv /tmp/forge-sdk
+              PY=/tmp/forge-sdk/bin/python
+              "$PY" -m pip install --upgrade pip
+              "$PY" -m pip install --no-cache-dir .
+              "$PY" -m pip check
+              cd /tmp
+              "$PY" -c "import json_api_forge; from json_api_forge import EditorControlPlaneClient; assert json_api_forge.__version__ == \"0.5.0\"; assert EditorControlPlaneClient"
+            '
+
+  coverage:
+    name: SDK coverage gates
+    needs: preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]"
+      - run: |
+          pytest tests --cov=json_api_forge --cov-report=term-missing --cov-report=json:coverage.json -q
+          python scripts/check_critical_coverage.py coverage.json
+
+  artifacts:
+    name: Reproducible PyPI distributions and source bundle
+    needs: [test, contract, platform-installs, coverage]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Build twice and inspect distributions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip build twine
+          export SOURCE_DATE_EPOCH="$(git log -1 --pretty=%ct)"
+          python -m build --outdir build-first
+          python -m build --outdir build-second
+          cmp build-first/*.whl build-second/*.whl
+          python - <<'PY'
+          import pathlib
+          import tarfile
+          import zipfile
+
+          first = next(pathlib.Path("build-first").glob("*.tar.gz"))
+          second = pathlib.Path("build-second", first.name)
+          def payload(path):
+              with tarfile.open(path, "r:gz") as archive:
+                  return {
+                      member.name: (member.type, member.mode, member.linkname, archive.extractfile(member).read() if member.isfile() else None)
+                      for member in archive.getmembers()
+                  }
+          if payload(first) != payload(second):
+              raise SystemExit("sdist payload differs between clean builds")
+
+          wheel = next(pathlib.Path("build-first").glob("*.whl"))
+          if not wheel.name.endswith("-py3-none-any.whl"):
+              raise SystemExit(f"wheel is not universal: {wheel.name}")
+          with zipfile.ZipFile(wheel) as archive:
+              names = set(archive.namelist())
+              metadata_name = next(name for name in names if name.endswith(".dist-info/METADATA"))
+              metadata = archive.read(metadata_name).decode()
+          required = {
+              "json_api_forge/__init__.py", "json_api_forge/client.py", "json_api_forge/control_plane.py",
+              "json_api_forge/enterprise.py", "json_api_forge/integrations/ddm.py",
+              "json_api_forge/integrations/younglion.py", "json_api_forge/py.typed",
+          }
+          forbidden = [name for name in names if name.startswith(("framework/", "clients/", "editor/"))]
+          if required - names or forbidden:
+              raise SystemExit(f"invalid wheel contents: missing={sorted(required - names)}, forbidden={forbidden}")
+          for extra in ("younglion", "ddm"):
+              if f"Provides-Extra: {extra}" not in metadata:
+                  raise SystemExit(f"wheel metadata is missing extra {extra!r}")
+          PY
+          mkdir dist
+          cp build-first/* dist/
+          python -m twine check dist/*
+      - name: Install wheel outside the checkout
+        shell: bash
+        run: |
+          python -m venv "${{ runner.temp }}/forge-sdk-wheel"
+          "${{ runner.temp }}/forge-sdk-wheel/bin/python" -m pip install dist/*.whl
+          cd "${{ runner.temp }}"
+          "${{ runner.temp }}/forge-sdk-wheel/bin/python" -c "import json_api_forge; assert json_api_forge.__version__ == '0.5.0'"
+          "${{ runner.temp }}/forge-sdk-wheel/bin/python" -c "from json_api_forge import EditorControlPlaneClient, AsyncEditorControlPlaneClient; assert EditorControlPlaneClient and AsyncEditorControlPlaneClient"
+      - name: Assemble the manual PyPI/release handoff
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release/python-sdk
+          cp dist/* release/python-sdk/
+          git archive --format=zip --prefix=JSON-API-Forge-python-library-v0.5.0/ -o release/python-sdk/JSON-API-Forge-python-library-v0.5.0-source.zip HEAD
+          cd release/python-sdk
+          sha256sum * > SHA256SUMS
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: JSON-API-Forge-python-library-v0.5.0
+          path: release/python-sdk/*
+          if-no-files-found: error
+          retention-days: 30

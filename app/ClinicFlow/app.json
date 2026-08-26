@@ -1,0 +1,9 @@
+{
+  "$schema": "../../schemas/manifest.schema.json",
+  "slug": "clinic-flow",
+  "name": "Clinic Flow",
+  "version": "1.0.0",
+  "api_prefix": "/api/clinic-flow/v1",
+  "docs_enabled": true,
+  "audit_enabled": true
+}

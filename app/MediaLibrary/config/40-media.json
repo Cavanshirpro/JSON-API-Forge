@@ -1,0 +1,22 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "media": {
+    "enabled": true,
+    "backend": "local",
+    "local_directory": "./data/media-library-files",
+    "max_upload_bytes": 10485760,
+    "max_batch_files": 5,
+    "max_owner_bytes": 104857600,
+    "allowed_mime_types": ["image/jpeg", "image/png", "image/webp", "application/pdf"],
+    "allowed_extensions": ["jpg", "jpeg", "png", "webp", "pdf"],
+    "public": false,
+    "upload_permission": "media.upload",
+    "read_permission": "media.read",
+    "delete_permission": "media.delete",
+    "admin_permission": "media.admin",
+    "owner_delete_only": true,
+    "deduplicate": true,
+    "deduplicate_scope": "owner",
+    "signed_urls_enabled": false
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "data_sources": [
+    {
+      "name": "product-catalog",
+      "path": "content/catalog",
+      "type": "json_file",
+      "file": "data/catalog.json",
+      "public": true,
+      "public_write": false,
+      "writable": false,
+      "id_field": "id",
+      "max_items": 100,
+      "allowed_filters": ["category", "enabled"],
+      "allowed_sort": ["id", "name", "price"],
+      "cache_ttl_seconds": 30,
+      "stale_ttl_seconds": 60,
+      "forward_query": true,
+      "forward_body": false
+    }
+  ]
+}

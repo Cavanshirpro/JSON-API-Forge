@@ -1,0 +1,57 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "security": {
+    "bootstrap_enabled": true,
+    "bootstrap_admin_key": "$env:COMMERCE_CORE_BOOTSTRAP_ADMIN_KEY",
+    "bootstrap_one_time": true,
+    "allow_query_api_key": false,
+    "allow_websocket_query_api_key": false
+  },
+  "roles": {
+    "admin": {
+      "permissions": [
+        "*"
+      ]
+    },
+    "operator": {
+      "permissions": [
+        "commerce.audit-events.create",
+        "commerce.audit-events.delete",
+        "commerce.audit-events.list",
+        "commerce.audit-events.read",
+        "commerce.audit-events.update",
+        "commerce.events.publish",
+        "commerce.events.subscribe",
+        "commerce.orders.analytics",
+        "commerce.orders.assign",
+        "commerce.orders.create",
+        "commerce.orders.delete",
+        "commerce.orders.list",
+        "commerce.orders.read",
+        "commerce.orders.transition",
+        "commerce.orders.update",
+        "commerce.policies.create",
+        "commerce.policies.delete",
+        "commerce.policies.list",
+        "commerce.policies.read",
+        "commerce.policies.update",
+        "commerce.workflows.create",
+        "commerce.workflows.delete",
+        "commerce.workflows.list",
+        "commerce.workflows.read",
+        "commerce.workflows.update",
+        "system.meta.read"
+      ]
+    },
+    "auditor": {
+      "permissions": [
+        "commerce.orders.list",
+        "commerce.orders.read",
+        "commerce.audit-events.list",
+        "commerce.audit-events.read",
+        "commerce.orders.analytics",
+        "system.meta.read"
+      ]
+    }
+  }
+}

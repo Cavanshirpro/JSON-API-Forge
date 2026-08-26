@@ -1,0 +1,10 @@
+{
+  "$schema": "../../schemas/manifest.schema.json",
+  "slug": "task-board",
+  "name": "Task Board",
+  "version": "1.0.0",
+  "api_prefix": "/api/task-board/v1",
+  "docs_enabled": true,
+  "audit_enabled": true,
+  "cors_origins": ["http://localhost:3000", "http://127.0.0.1:3000"]
+}

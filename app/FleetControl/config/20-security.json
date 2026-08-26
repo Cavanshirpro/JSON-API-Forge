@@ -1,0 +1,57 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "security": {
+    "bootstrap_enabled": true,
+    "bootstrap_admin_key": "$env:FLEET_CONTROL_BOOTSTRAP_ADMIN_KEY",
+    "bootstrap_one_time": true,
+    "allow_query_api_key": false,
+    "allow_websocket_query_api_key": false
+  },
+  "roles": {
+    "admin": {
+      "permissions": [
+        "*"
+      ]
+    },
+    "operator": {
+      "permissions": [
+        "fleet.audit-events.create",
+        "fleet.audit-events.delete",
+        "fleet.audit-events.list",
+        "fleet.audit-events.read",
+        "fleet.audit-events.update",
+        "fleet.events.publish",
+        "fleet.events.subscribe",
+        "fleet.policies.create",
+        "fleet.policies.delete",
+        "fleet.policies.list",
+        "fleet.policies.read",
+        "fleet.policies.update",
+        "fleet.vehicles.analytics",
+        "fleet.vehicles.assign",
+        "fleet.vehicles.create",
+        "fleet.vehicles.delete",
+        "fleet.vehicles.list",
+        "fleet.vehicles.read",
+        "fleet.vehicles.transition",
+        "fleet.vehicles.update",
+        "fleet.workflows.create",
+        "fleet.workflows.delete",
+        "fleet.workflows.list",
+        "fleet.workflows.read",
+        "fleet.workflows.update",
+        "system.meta.read"
+      ]
+    },
+    "auditor": {
+      "permissions": [
+        "fleet.vehicles.list",
+        "fleet.vehicles.read",
+        "fleet.audit-events.list",
+        "fleet.audit-events.read",
+        "fleet.vehicles.analytics",
+        "system.meta.read"
+      ]
+    }
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "security": {
+    "bootstrap_enabled": true,
+    "bootstrap_admin_key": "$env:RESTAURANT_NETWORK_BOOTSTRAP_ADMIN_KEY",
+    "bootstrap_one_time": true,
+    "allow_query_api_key": false,
+    "allow_websocket_query_api_key": false
+  },
+  "roles": {
+    "admin": {
+      "permissions": [
+        "*"
+      ]
+    },
+    "operator": {
+      "permissions": [
+        "restaurant.audit-events.create",
+        "restaurant.audit-events.delete",
+        "restaurant.audit-events.list",
+        "restaurant.audit-events.read",
+        "restaurant.audit-events.update",
+        "restaurant.events.publish",
+        "restaurant.events.subscribe",
+        "restaurant.policies.create",
+        "restaurant.policies.delete",
+        "restaurant.policies.list",
+        "restaurant.policies.read",
+        "restaurant.policies.update",
+        "restaurant.service_orders.analytics",
+        "restaurant.service_orders.assign",
+        "restaurant.service_orders.create",
+        "restaurant.service_orders.delete",
+        "restaurant.service_orders.list",
+        "restaurant.service_orders.read",
+        "restaurant.service_orders.transition",
+        "restaurant.service_orders.update",
+        "restaurant.workflows.create",
+        "restaurant.workflows.delete",
+        "restaurant.workflows.list",
+        "restaurant.workflows.read",
+        "restaurant.workflows.update",
+        "system.meta.read"
+      ]
+    },
+    "auditor": {
+      "permissions": [
+        "restaurant.service_orders.list",
+        "restaurant.service_orders.read",
+        "restaurant.audit-events.list",
+        "restaurant.audit-events.read",
+        "restaurant.service_orders.analytics",
+        "system.meta.read"
+      ]
+    }
+  }
+}

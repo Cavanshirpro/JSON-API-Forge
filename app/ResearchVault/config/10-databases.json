@@ -1,0 +1,9 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "databases": {
+    "primary": {
+      "url": "$env:RESEARCH_VAULT_DATABASE_URL:-sqlite+aiosqlite:///./data/research-vault.db",
+      "pool_pre_ping": true
+    }
+  }
+}

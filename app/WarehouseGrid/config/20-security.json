@@ -1,0 +1,57 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "security": {
+    "bootstrap_enabled": true,
+    "bootstrap_admin_key": "$env:WAREHOUSE_GRID_BOOTSTRAP_ADMIN_KEY",
+    "bootstrap_one_time": true,
+    "allow_query_api_key": false,
+    "allow_websocket_query_api_key": false
+  },
+  "roles": {
+    "admin": {
+      "permissions": [
+        "*"
+      ]
+    },
+    "operator": {
+      "permissions": [
+        "system.meta.read",
+        "warehouse.audit-events.create",
+        "warehouse.audit-events.delete",
+        "warehouse.audit-events.list",
+        "warehouse.audit-events.read",
+        "warehouse.audit-events.update",
+        "warehouse.events.publish",
+        "warehouse.events.subscribe",
+        "warehouse.inventory_batches.analytics",
+        "warehouse.inventory_batches.assign",
+        "warehouse.inventory_batches.create",
+        "warehouse.inventory_batches.delete",
+        "warehouse.inventory_batches.list",
+        "warehouse.inventory_batches.read",
+        "warehouse.inventory_batches.transition",
+        "warehouse.inventory_batches.update",
+        "warehouse.policies.create",
+        "warehouse.policies.delete",
+        "warehouse.policies.list",
+        "warehouse.policies.read",
+        "warehouse.policies.update",
+        "warehouse.workflows.create",
+        "warehouse.workflows.delete",
+        "warehouse.workflows.list",
+        "warehouse.workflows.read",
+        "warehouse.workflows.update"
+      ]
+    },
+    "auditor": {
+      "permissions": [
+        "warehouse.inventory_batches.list",
+        "warehouse.inventory_batches.read",
+        "warehouse.audit-events.list",
+        "warehouse.audit-events.read",
+        "warehouse.inventory_batches.analytics",
+        "system.meta.read"
+      ]
+    }
+  }
+}

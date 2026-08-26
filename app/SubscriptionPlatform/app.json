@@ -1,0 +1,9 @@
+{
+  "$schema": "../../schemas/manifest.schema.json",
+  "slug": "subscription-platform",
+  "name": "Subscription Platform",
+  "version": "1.0.0",
+  "api_prefix": "/api/subscription-platform/v1",
+  "docs_enabled": true,
+  "audit_enabled": true
+}

@@ -1,0 +1,9 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "databases": {
+    "primary": {
+      "url": "$env:CLINIC_FLOW_DATABASE_URL:-sqlite+aiosqlite:///./data/clinic-flow.db",
+      "pool_pre_ping": true
+    }
+  }
+}

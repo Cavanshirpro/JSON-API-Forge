@@ -1,0 +1,204 @@
+name: Example applications
+
+on:
+  push:
+    branches: [exampleApps]
+  pull_request:
+    branches: [exampleApps]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: examples-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preflight:
+    name: Example-only ownership and deterministic source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.14"
+      - name: Verify branch ownership and catalog identity
+        run: |
+          python - <<'PY'
+          import json
+          import pathlib
+          import re
+          import subprocess
+
+          root = pathlib.Path.cwd()
+          forbidden = {
+              ".dockerignore", ".env.example", "Dockerfile", "Makefile", "clients", "deploy", "docs",
+              "editor", "forge.py", "framework", "main.py", "passenger_wsgi.py", "pyproject.toml",
+              "requirements.txt", "run.py", "schemas", "tests",
+          }
+          present = sorted(path for path in forbidden if (root / path).exists())
+          if present:
+              raise SystemExit(f"exampleApps contains unrelated paths: {present}")
+          workflows = sorted(path.name for path in (root / ".github/workflows").glob("*.yml"))
+          if workflows != ["codeql.yml", "example-apps.yml"]:
+              raise SystemExit(f"unexpected workflows: {workflows}")
+          projects = sorted(path for path in (root / "app").iterdir() if path.is_dir())
+          if len(projects) != 25:
+              raise SystemExit(f"expected 25 projects, found {len(projects)}")
+          for project in projects:
+              payload = json.loads((project / "app.json").read_text(encoding="utf-8"))
+              if not payload.get("slug") or not (project / "config").is_dir():
+                  raise SystemExit(f"incomplete example: {project.name}")
+          if (root / "VERSION").read_text(encoding="utf-8").strip() != "0.5.0":
+              raise SystemExit("VERSION must be 0.5.0")
+          links = [
+              line.split(maxsplit=3)[-1]
+              for line in subprocess.check_output(["git", "ls-files", "-s"], text=True).splitlines()
+              if line.startswith("120000 ")
+          ]
+          if links:
+              raise SystemExit(f"symlinks are not allowed in exampleApps source: {links}")
+          unpinned = []
+          for workflow in (root / ".github/workflows").glob("*.yml"):
+              for number, line in enumerate(workflow.read_text(encoding="utf-8").splitlines(), 1):
+                  match = re.search(r"\buses:\s*[^@\s]+@([^\s#]+)", line)
+                  if match and not re.fullmatch(r"[0-9a-f]{40}", match.group(1)):
+                      unpinned.append(f"{workflow}:{number}: {match.group(1)}")
+          if unpinned:
+              raise SystemExit(f"workflow actions must use immutable commit SHAs: {unpinned}")
+          PY
+      - name: Check generated catalog, scripts and manifest
+        run: |
+          python -m pip install "bandit>=1.9,<2"
+          python scripts/generate_example_catalog.py --check
+          python -m compileall -q scripts
+          bandit -q -ll -r scripts
+          bash -n scripts/install-example.sh
+          pwsh -NoProfile -Command '$null = [scriptblock]::Create((Get-Content scripts/install-example.ps1 -Raw))'
+          python scripts/check_manifest.py
+          git diff --check
+      - name: Prove byte-for-byte deterministic release ZIPs
+        run: |
+          export SOURCE_DATE_EPOCH="$(git log -1 --pretty=%ct)"
+          python scripts/build-example-bundle.py "${{ runner.temp }}/examples-first.zip"
+          python scripts/build-example-bundle.py "${{ runner.temp }}/examples-second.zip"
+          cmp "${{ runner.temp }}/examples-first.zip" "${{ runner.temp }}/examples-second.zip"
+          python - <<'PY'
+          import os
+          import zipfile
+
+          with zipfile.ZipFile(os.environ["RUNNER_TEMP"] + "/examples-first.zip") as archive:
+              mode = archive.getinfo("scripts/install-example.sh").external_attr >> 16
+          if mode & 0o777 != 0o755:
+              raise SystemExit("Bash installer must be executable inside the release ZIP")
+          PY
+
+  validate:
+    name: Python ${{ matrix.python }} / real main runtime
+    needs: preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          path: examples
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+          path: server-source
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: server-source/pyproject.toml
+      - name: Install the independently owned server runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e "./server-source[dev]"
+          python -m pip check
+      - name: Lint example tooling
+        run: |
+          chmod +x examples/scripts/*.py
+          ruff format --check examples/scripts
+          ruff check examples/scripts
+      - name: Copy all examples into a clean main checkout
+        run: cp -a examples/app/. server-source/app/
+      - name: Initialize, validate and diagnose all 25 projects
+        working-directory: server-source
+        run: |
+          forge init
+          forge validate
+          forge doctor
+      - name: Exercise schema, CRUD, RPC, idempotency, realtime and media
+        working-directory: server-source
+        run: python ../examples/scripts/smoke-example-apps.py
+
+  installer-smoke:
+    name: ${{ matrix.label }} copy installer
+    needs: preflight
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {label: Linux, os: ubuntu-24.04}
+          - {label: Windows, os: windows-2025}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Test Bash installer
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          destination="$(mktemp -d)"
+          bash ./scripts/install-example.sh TaskBoard "$destination/app"
+          diff -r app/TaskBoard "$destination/app/TaskBoard"
+      - name: Test PowerShell installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $destination = Join-Path $env:RUNNER_TEMP "forge-example-copy"
+          ./scripts/install-example.ps1 -Name TaskBoard -Destination (Join-Path $destination "app")
+          if (-not (Test-Path (Join-Path $destination "app/TaskBoard/app.json") -PathType Leaf)) {
+            throw "PowerShell installer did not copy TaskBoard"
+          }
+
+  artifact:
+    name: Deterministic copy-ready bundle
+    needs: [validate, installer-smoke]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.13"
+      - name: Build and checksum release asset
+        run: |
+          export SOURCE_DATE_EPOCH="$(git log -1 --pretty=%ct)"
+          python scripts/build-example-bundle.py JSON-API-Forge-exampleApps-v0.5.0.zip
+          sha256sum JSON-API-Forge-exampleApps-v0.5.0.zip > JSON-API-Forge-exampleApps-v0.5.0.zip.sha256
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: JSON-API-Forge-exampleApps-v0.5.0
+          path: |
+            JSON-API-Forge-exampleApps-v0.5.0.zip
+            JSON-API-Forge-exampleApps-v0.5.0.zip.sha256
+          if-no-files-found: error
+          retention-days: 30

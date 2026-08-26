@@ -1,0 +1,133 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "operations": [
+    {
+      "name": "ledger.balance",
+      "path": "rpc/ledger.balance/{member_id}",
+      "method": "GET",
+      "database": "primary",
+      "permission": "ledger.balance.read",
+      "transaction": false,
+      "parameters": [
+        {
+          "name": "member_id",
+          "location": "path",
+          "type": "string",
+          "required": true,
+          "min_length": 1,
+          "max_length": 32
+        }
+      ],
+      "statements": [
+        {
+          "sql": "SELECT member_id, display_name, balance FROM guild_accounts WHERE member_id = :member_id",
+          "mode": "fetch_one",
+          "params": {"member_id": "$path.member_id"},
+          "result_name": "account",
+          "max_rows": 1
+        }
+      ],
+      "cache": {"enabled": true, "ttl_seconds": 5, "vary_by_principal": false},
+      "summary": "Read one member balance"
+    },
+    {
+      "name": "ledger.grant",
+      "method": "POST",
+      "database": "primary",
+      "permission": "ledger.grant",
+      "transaction": true,
+      "idempotency": true,
+      "input_schema": {
+        "type": "object",
+        "required": ["member_id", "amount", "reason"],
+        "additionalProperties": false,
+        "properties": {
+          "member_id": {"type": "string", "minLength": 1, "maxLength": 32},
+          "amount": {"type": "integer", "minimum": 1, "maximum": 1000000},
+          "reason": {"type": "string", "minLength": 1, "maxLength": 80}
+        }
+      },
+      "statements": [
+        {
+          "sql": "UPDATE guild_accounts SET balance = balance + :amount WHERE member_id = :member_id",
+          "mode": "execute",
+          "params": {"amount": "$body.amount", "member_id": "$body.member_id"},
+          "require_rowcount_min": 1,
+          "require_rowcount_max": 1,
+          "result_name": "credit"
+        },
+        {
+          "sql": "INSERT INTO guild_ledger_entries (from_member, to_member, amount, reason, idempotency_key) VALUES (:from_member, :to_member, :amount, :reason, :idempotency_key)",
+          "mode": "execute",
+          "params": {
+            "from_member": "system",
+            "to_member": "$body.member_id",
+            "amount": "$body.amount",
+            "reason": "$body.reason",
+            "idempotency_key": "$header.Idempotency-Key"
+          },
+          "result_name": "ledger_entry"
+        }
+      ],
+      "invalidate_resources": ["ledger/accounts", "ledger/entries"],
+      "invalidate_operations": ["ledger.balance"],
+      "summary": "Privileged idempotent balance grant"
+    },
+    {
+      "name": "ledger.transfer",
+      "method": "POST",
+      "database": "primary",
+      "permission": "ledger.transfer",
+      "transaction": true,
+      "idempotency": true,
+      "input_schema": {
+        "type": "object",
+        "required": ["from_member", "to_member", "amount", "reason"],
+        "additionalProperties": false,
+        "properties": {
+          "from_member": {"type": "string", "minLength": 1, "maxLength": 32},
+          "to_member": {"type": "string", "minLength": 1, "maxLength": 32},
+          "amount": {"type": "integer", "minimum": 1, "maximum": 1000000},
+          "reason": {"type": "string", "minLength": 1, "maxLength": 80}
+        }
+      },
+      "statements": [
+        {
+          "sql": "UPDATE guild_accounts SET balance = balance - :amount WHERE member_id = :from_member AND balance >= :amount AND member_id <> :to_member",
+          "mode": "execute",
+          "params": {
+            "amount": "$body.amount",
+            "from_member": "$body.from_member",
+            "to_member": "$body.to_member"
+          },
+          "require_rowcount_min": 1,
+          "require_rowcount_max": 1,
+          "result_name": "debit"
+        },
+        {
+          "sql": "UPDATE guild_accounts SET balance = balance + :amount WHERE member_id = :to_member",
+          "mode": "execute",
+          "params": {"amount": "$body.amount", "to_member": "$body.to_member"},
+          "require_rowcount_min": 1,
+          "require_rowcount_max": 1,
+          "result_name": "credit"
+        },
+        {
+          "sql": "INSERT INTO guild_ledger_entries (from_member, to_member, amount, reason, idempotency_key) VALUES (:from_member, :to_member, :amount, :reason, :idempotency_key)",
+          "mode": "execute",
+          "params": {
+            "from_member": "$body.from_member",
+            "to_member": "$body.to_member",
+            "amount": "$body.amount",
+            "reason": "$body.reason",
+            "idempotency_key": "$header.Idempotency-Key"
+          },
+          "result_name": "ledger_entry"
+        }
+      ],
+      "invalidate_resources": ["ledger/accounts", "ledger/entries"],
+      "invalidate_operations": ["ledger.balance"],
+      "summary": "Atomic transfer with insufficient-funds rollback"
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "$schema": "../../schemas/manifest.schema.json",
+  "slug": "tournament-engine",
+  "name": "Tournament Engine",
+  "version": "1.0.0",
+  "api_prefix": "/api/tournament-engine/v1",
+  "docs_enabled": true,
+  "audit_enabled": true
+}

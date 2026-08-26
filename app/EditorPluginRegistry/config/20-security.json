@@ -1,0 +1,57 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "security": {
+    "bootstrap_enabled": true,
+    "bootstrap_admin_key": "$env:EDITOR_PLUGIN_REGISTRY_BOOTSTRAP_ADMIN_KEY",
+    "bootstrap_one_time": true,
+    "allow_query_api_key": false,
+    "allow_websocket_query_api_key": false
+  },
+  "roles": {
+    "admin": {
+      "permissions": [
+        "*"
+      ]
+    },
+    "operator": {
+      "permissions": [
+        "editor.audit-events.create",
+        "editor.audit-events.delete",
+        "editor.audit-events.list",
+        "editor.audit-events.read",
+        "editor.audit-events.update",
+        "editor.events.publish",
+        "editor.events.subscribe",
+        "editor.plugins.analytics",
+        "editor.plugins.assign",
+        "editor.plugins.create",
+        "editor.plugins.delete",
+        "editor.plugins.list",
+        "editor.plugins.read",
+        "editor.plugins.transition",
+        "editor.plugins.update",
+        "editor.policies.create",
+        "editor.policies.delete",
+        "editor.policies.list",
+        "editor.policies.read",
+        "editor.policies.update",
+        "editor.workflows.create",
+        "editor.workflows.delete",
+        "editor.workflows.list",
+        "editor.workflows.read",
+        "editor.workflows.update",
+        "system.meta.read"
+      ]
+    },
+    "auditor": {
+      "permissions": [
+        "editor.plugins.list",
+        "editor.plugins.read",
+        "editor.audit-events.list",
+        "editor.audit-events.read",
+        "editor.plugins.analytics",
+        "system.meta.read"
+      ]
+    }
+  }
+}

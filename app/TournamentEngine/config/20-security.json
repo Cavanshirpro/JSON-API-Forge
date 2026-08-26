@@ -1,0 +1,57 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "security": {
+    "bootstrap_enabled": true,
+    "bootstrap_admin_key": "$env:TOURNAMENT_ENGINE_BOOTSTRAP_ADMIN_KEY",
+    "bootstrap_one_time": true,
+    "allow_query_api_key": false,
+    "allow_websocket_query_api_key": false
+  },
+  "roles": {
+    "admin": {
+      "permissions": [
+        "*"
+      ]
+    },
+    "operator": {
+      "permissions": [
+        "system.meta.read",
+        "tournaments.audit-events.create",
+        "tournaments.audit-events.delete",
+        "tournaments.audit-events.list",
+        "tournaments.audit-events.read",
+        "tournaments.audit-events.update",
+        "tournaments.events.publish",
+        "tournaments.events.subscribe",
+        "tournaments.matches.analytics",
+        "tournaments.matches.assign",
+        "tournaments.matches.create",
+        "tournaments.matches.delete",
+        "tournaments.matches.list",
+        "tournaments.matches.read",
+        "tournaments.matches.transition",
+        "tournaments.matches.update",
+        "tournaments.policies.create",
+        "tournaments.policies.delete",
+        "tournaments.policies.list",
+        "tournaments.policies.read",
+        "tournaments.policies.update",
+        "tournaments.workflows.create",
+        "tournaments.workflows.delete",
+        "tournaments.workflows.list",
+        "tournaments.workflows.read",
+        "tournaments.workflows.update"
+      ]
+    },
+    "auditor": {
+      "permissions": [
+        "tournaments.matches.list",
+        "tournaments.matches.read",
+        "tournaments.audit-events.list",
+        "tournaments.audit-events.read",
+        "tournaments.matches.analytics",
+        "system.meta.read"
+      ]
+    }
+  }
+}

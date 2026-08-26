@@ -1,0 +1,45 @@
+name: Editor CodeQL
+
+on:
+  push:
+    branches: [Editor]
+  pull_request:
+    branches: [Editor]
+  workflow_dispatch:
+
+permissions:
+  security-events: write
+  packages: read
+  contents: read
+
+concurrency:
+  group: editor-codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: C++ / Qt security analysis
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730 # v4
+        with:
+          version: "6.8.3"
+          modules: qtwebengine
+          cache: true
+      - uses: github/codeql-action/init@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4
+        with:
+          languages: c-cpp
+          build-mode: manual
+      - name: Configure instrumented build
+        run: >-
+          cmake -S . -B build/codeql -G Ninja
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DBUILD_TESTING=OFF
+          -DFORGE_EDITOR_WARNINGS_AS_ERRORS=ON
+      - name: Compile instrumented build
+        run: cmake --build build/codeql --parallel 2
+      - uses: github/codeql-action/analyze@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4

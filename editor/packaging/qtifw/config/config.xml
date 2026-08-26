@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Installer>
+    <Name>JSON API Forge Editor</Name>
+    <Version>0.5.0</Version>
+    <Title>JSON API Forge Editor Setup</Title>
+    <Publisher>Cavanshirpro</Publisher>
+    <ProductUrl>https://github.com/Cavanshirpro/JSON-API-Forge</ProductUrl>
+    <InstallerApplicationIcon>forge-editor</InstallerApplicationIcon>
+    <InstallerWindowIcon>installer-window-icon.png</InstallerWindowIcon>
+    <Logo>installer-logo.png</Logo>
+    <WizardStyle>Modern</WizardStyle>
+    <WizardDefaultWidth>760</WizardDefaultWidth>
+    <WizardDefaultHeight>540</WizardDefaultHeight>
+    <WizardMinimumWidth>680</WizardMinimumWidth>
+    <WizardMinimumHeight>480</WizardMinimumHeight>
+    <StartMenuDir>JSON API Forge</StartMenuDir>
+    <TargetDir>@ApplicationsDir@/JSON API Forge Editor</TargetDir>
+    <MaintenanceToolName>JSON-API-Forge-Editor-Maintenance</MaintenanceToolName>
+    <RunProgram>@TargetDir@/bin/JSON-API-Forge-Editor.exe</RunProgram>
+    <RunProgramDescription>Launch JSON API Forge Editor</RunProgramDescription>
+    <AllowNonAsciiCharacters>true</AllowNonAsciiCharacters>
+    <RepositorySettingsPageVisible>false</RepositorySettingsPageVisible>
+    <AllowRepositoriesForOfflineInstaller>false</AllowRepositoriesForOfflineInstaller>
+    <DependsOnLocalInstallerBinary>true</DependsOnLocalInstallerBinary>
+</Installer>

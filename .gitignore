@@ -1,0 +1,46 @@
+# CMake / native build output
+build/
+cmake-build-*/
+CMakeCache.txt
+CMakeFiles/
+CTestTestfile.cmake
+Testing/
+_CPack_Packages/
+install_manifest.txt
+compile_commands.json
+*.ninja
+.ninja_*
+
+# Packaged artifacts
+artifacts/
+dist/
+stage/
+*.deb
+*.dmg
+*.exe
+*.msi
+*.zip
+*.sha256
+
+# Local Editor state and secrets
+.env
+.env.*
+data/
+*.log
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Tool caches
+.cache/
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+*.py[cod]
+
+# IDE / OS
+.idea/
+.vscode/*.local.json
+.DS_Store
+Thumbs.db

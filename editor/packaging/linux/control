@@ -1,0 +1,11 @@
+Package: json-api-forge-editor
+Version: 0.5.0
+Section: devel
+Priority: optional
+Architecture: @ARCH@
+Maintainer: Cavanşir Qurbanzadə <noreply@jsonapiforge.dev>
+Depends: libc6 (>= 2.35), libasound2t64 | libasound2, libdbus-1-3, libfontconfig1, libgl1, libnss3, libx11-6, libx11-xcb1, libxcb1, libxcb-cursor0, libxcb-icccm4, libxcb-image0, libxcb-keysyms1, libxcb-randr0, libxcb-render-util0, libxcb-shape0, libxcb-xfixes0, libxcb-xkb1, libxkbcommon0, libxkbcommon-x11-0
+Homepage: https://github.com/Cavanshirpro/JSON-API-Forge
+Description: Secure visual and code workspace for JSON API Forge
+ The Amber Gold and Graphite Gray desktop Editor provides account-based
+ remote project editing, database browsing and team collaboration.

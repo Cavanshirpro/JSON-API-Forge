@@ -1,0 +1,434 @@
+name: Editor build
+
+on:
+  push:
+    branches: [Editor]
+  pull_request:
+    branches: [Editor]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: editor-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preflight:
+    name: Source, ownership and CMake preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.13"
+      - name: Remove obsolete NSIS metadata left by browser uploads
+        shell: bash
+        run: rm -f editor/packaging/windows/installer.nsi
+      - name: Validate Editor-only source contract
+        run: |
+          python - <<'PY'
+          import json
+          import pathlib
+          import re
+          import subprocess
+          import xml.etree.ElementTree as ET
+
+          root = pathlib.Path.cwd()
+          forbidden = [
+              ".dockerignore",
+              ".env.example",
+              ".python-version",
+              "Dockerfile",
+              "Makefile",
+              "app",
+              "clients",
+              "deploy",
+              "docker-compose.example.yml",
+              "docs",
+              "example-apps",
+              "forge.py",
+              "framework",
+              "json_api_forge",
+              "main.py",
+              "passenger_wsgi.py",
+              "pyproject.toml",
+              "requirements-dev.txt",
+              "requirements.txt",
+              "run.py",
+              "schemas",
+              "tests",
+          ]
+          leaked = [name for name in forbidden if (root / name).exists()]
+          if leaked:
+              raise SystemExit(f"non-Editor source leaked into Editor branch: {leaked}")
+          scripts = sorted(path.name for path in (root / "scripts").iterdir())
+          if scripts != ["check_manifest.py"]:
+              raise SystemExit(f"unexpected Editor scripts: {scripts}")
+          workflows = sorted(path.name for path in (root / ".github/workflows").glob("*.yml"))
+          if workflows != ["editor-build.yml", "editor-codeql.yml"]:
+              raise SystemExit(f"unexpected Editor workflows: {workflows}")
+          if (root / "VERSION").read_text().strip() != "0.5.0":
+              raise SystemExit("root VERSION mismatch")
+          cmake = (root / "editor/CMakeLists.txt").read_text()
+          if not re.search(r"project\(JSONAPIForgeEditor VERSION 0\.5\.0", cmake):
+              raise SystemExit("Editor CMake version mismatch")
+          required = [
+              "editor/src/MainWindow.cpp",
+              "editor/src/ApiClient.cpp",
+              "editor/src/TeamWorkspace.cpp",
+              "editor/src/VisualDesigner.cpp",
+              "editor/src/GraphModel.cpp",
+              "editor/src/NodeGraphEditor.cpp",
+              "editor/src/PluginCatalogClient.cpp",
+              "editor/src/PythonSdkPanel.cpp",
+              "editor/src/TemplateManager.cpp",
+              "editor/include/forgeeditor/IEditorPlugin.hpp",
+              "editor/resources/styles/dark.qss",
+              "editor/resources/templates/catalog.json",
+              "editor/resources/logo.png",
+              "editor/resources/brand-mark-transparent.png",
+              "editor/resources/forge-editor.ico",
+              "editor/resources/forge-editor.icns",
+              "editor/packaging/qtifw/config/config.xml",
+              "editor/packaging/qtifw/build-installer.ps1",
+              "editor/packaging/qtifw/packages/dev.jsonapiforge.editor/meta/package.xml",
+              "editor/packaging/qtifw/packages/dev.jsonapiforge.editor/meta/installscript.qs",
+              "QT-CREATOR-BUILD-GUIDE.md",
+              "editor/packaging/linux/control",
+              "editor/packaging/linux/launcher.sh",
+              "editor/packaging/linux/bundle-qt.sh",
+          ]
+          missing = [name for name in required if not (root / name).is_file()]
+          if missing:
+              raise SystemExit(f"missing Editor release files: {missing}")
+          if (root / "editor/packaging/windows/installer.nsi").exists():
+              raise SystemExit("legacy NSIS metadata must not coexist with the Qt IFW installer")
+          ifw_config = ET.parse(root / "editor/packaging/qtifw/config/config.xml").getroot()
+          ifw_package = ET.parse(
+              root / "editor/packaging/qtifw/packages/dev.jsonapiforge.editor/meta/package.xml"
+          ).getroot()
+          if ifw_config.tag != "Installer" or ifw_config.findtext("Version") != "0.5.0":
+              raise SystemExit("Qt IFW configuration identity/version mismatch")
+          if ifw_config.findtext("InstallerWindowIcon") == ifw_config.findtext("Logo"):
+              raise SystemExit("Qt IFW window icon and logo must use distinct resource names")
+          if ifw_package.findtext("Name") != "dev.jsonapiforge.editor":
+              raise SystemExit("Qt IFW component identity mismatch")
+          licenses = ifw_package.findall("./Licenses/License")
+          if len(licenses) != 1 or licenses[0].attrib.get("file") != "license.txt":
+              raise SystemExit("Qt IFW package must present the project license")
+          unpinned = []
+          for workflow in (root / ".github/workflows").glob("*.yml"):
+              for number, line in enumerate(workflow.read_text(encoding="utf-8").splitlines(), 1):
+                  match = re.search(r"\buses:\s*[^@\s]+@([^\s#]+)", line)
+                  if match and not re.fullmatch(r"[0-9a-f]{40}", match.group(1)):
+                      unpinned.append(f"{workflow}:{number}: {match.group(1)}")
+          if unpinned:
+              raise SystemExit(f"workflow actions must use immutable commit SHAs: {unpinned}")
+          if (root / "editor/resources/logo.png").stat().st_size < 100_000:
+              raise SystemExit("canonical Editor logo appears truncated")
+          catalog = json.loads((root / "editor/resources/templates/catalog.json").read_text())
+          if len(catalog.get("templates", [])) != 8:
+              raise SystemExit("Editor must ship exactly eight reviewed starter templates")
+          links = [
+              line.split(maxsplit=3)[-1]
+              for line in subprocess.check_output(["git", "ls-files", "-s"], text=True).splitlines()
+              if line.startswith("120000 ")
+          ]
+          if links:
+              raise SystemExit(f"symlinks are not allowed in Editor source: {links}")
+          PY
+          python scripts/check_manifest.py
+          git diff --check
+
+  build:
+    name: ${{ matrix.label }}
+    needs: preflight
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 55
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            label: Linux x64 portable ZIP + DEB
+            artifact: linux-x64
+          - os: ubuntu-24.04-arm
+            label: Linux ARM64 portable ZIP + DEB
+            artifact: linux-arm64
+          - os: windows-2022
+            label: Windows x64 portable ZIP + Qt IFW installer
+            artifact: windows-x64
+            qt_arch: win64_msvc2022_64
+            cmake_arch: x64
+          - os: windows-11-arm
+            label: Windows ARM64 portable ZIP + Qt IFW compatibility installer
+            artifact: windows-arm64
+            qt_arch: win64_msvc2022_arm64
+            cmake_arch: ARM64
+          - os: macos-15-intel
+            label: macOS Intel portable ZIP + DMG
+            artifact: macos-x64
+          - os: macos-15
+            label: macOS ARM64 portable ZIP + DMG
+            artifact: macos-arm64
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Install native Qt and packaging tools on Linux
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            dpkg-dev ninja-build qt6-base-dev qt6-base-dev-tools zip
+          # Qt WebEngine is optional on architectures where Ubuntu does not
+          # publish the package; the Editor keeps its external-browser fallback.
+          sudo apt-get install --no-install-recommends -y qt6-webengine-dev || \
+            echo "Qt WebEngine unavailable; building the secure browser-fallback variant."
+      - name: Install Qt and Qt IFW on Windows x64
+        if: matrix.artifact == 'windows-x64'
+        uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730 # v4
+        with:
+          version: "6.8.3"
+          host: windows
+          arch: ${{ matrix.qt_arch }}
+          modules: qtwebengine
+          tools: tools_ifw,qt.tools.ifw.47
+          cache: true
+      - name: Install native Qt on Windows ARM64
+        if: matrix.artifact == 'windows-arm64'
+        uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730 # v4
+        with:
+          version: "6.8.3"
+          host: windows_arm64
+          arch: ${{ matrix.qt_arch }}
+          cache: true
+      - name: Install Qt IFW Windows packaging tools on Windows ARM64
+        if: matrix.artifact == 'windows-arm64'
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check --no-input "aqtinstall==3.3.0"
+          $ifwRoot = Join-Path $env:RUNNER_TEMP "qt-ifw-windows"
+          python -m aqt install-tool windows desktop tools_ifw qt.tools.ifw.47 --outputdir $ifwRoot
+          $binaryCreator = Get-ChildItem -Path $ifwRoot -Filter binarycreator.exe -File -Recurse |
+            Select-Object -First 1
+          if (-not $binaryCreator) {
+            throw "Qt IFW binarycreator.exe was not installed"
+          }
+          $binaryCreator.Directory.FullName | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Install Qt on macOS
+        if: runner.os == 'macOS'
+        uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730 # v4
+        with:
+          version: "6.8.3"
+          modules: qtwebengine
+          cache: true
+      - name: Configure Linux or macOS
+        if: runner.os != 'Windows'
+        run: >-
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DBUILD_TESTING=ON
+          -DFORGE_EDITOR_WARNINGS_AS_ERRORS=ON
+      - name: Configure matching MSVC architecture
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: >-
+          cmake -S . -B build -G "Visual Studio 17 2022"
+          -A "${{ matrix.cmake_arch }}"
+          -DBUILD_TESTING=ON
+          -DFORGE_EDITOR_WARNINGS_AS_ERRORS=ON
+      - name: Compile
+        run: cmake --build build --config Release --parallel 2
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+      - name: Stage install tree
+        run: cmake --install build --config Release --prefix stage
+      - name: Package Linux multi-file application and installer
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          bash editor/packaging/linux/bundle-qt.sh stage
+          install -m 0755 editor/packaging/linux/launcher.sh stage/json-api-forge-editor
+          cp EDITOR.md LICENSE stage/
+          count=$(find stage -type f | wc -l)
+          test "$count" -gt 20
+          QT_QPA_PLATFORM=offscreen stage/json-api-forge-editor \
+            --window-size 1024x640 \
+            --screenshot "artifacts/editor-packaged-${{ matrix.artifact }}.png"
+          test -s "artifacts/editor-packaged-${{ matrix.artifact }}.png"
+          archive="JSON-API-Forge-Editor-v0.5.0-${{ matrix.artifact }}.zip"
+          (cd stage && zip -9 -r "../artifacts/$archive" .)
+          debroot="${{ runner.temp }}/forge-editor-deb"
+          mkdir -p "$debroot/DEBIAN" "$debroot/opt/json-api-forge-editor" "$debroot/usr/bin" \
+            "$debroot/usr/share/applications" "$debroot/usr/share/icons/hicolor/512x512/apps"
+          cp -a stage/. "$debroot/opt/json-api-forge-editor/"
+          cp editor/resources/dev.jsonapiforge.editor.desktop "$debroot/usr/share/applications/"
+          cp editor/resources/logo.png \
+            "$debroot/usr/share/icons/hicolor/512x512/apps/dev.jsonapiforge.editor.png"
+          ln -s /opt/json-api-forge-editor/json-api-forge-editor \
+            "$debroot/usr/bin/json-api-forge-editor"
+          arch=$(dpkg --print-architecture)
+          sed "s/@ARCH@/$arch/" editor/packaging/linux/control > "$debroot/DEBIAN/control"
+          chmod 0755 "$debroot/DEBIAN"
+          installer="JSON-API-Forge-Editor-v0.5.0-${{ matrix.artifact }}.deb"
+          dpkg-deb --build --root-owner-group "$debroot" "artifacts/$installer"
+          dpkg-deb --info "artifacts/$installer"
+          dpkg-deb --contents "artifacts/$installer" | grep json-api-forge-editor
+          (cd artifacts && sha256sum "$archive" "$installer" > SHA256SUMS)
+          (cd artifacts && sha256sum "$archive" > "$archive.sha256")
+          (cd artifacts && sha256sum "$installer" > "$installer.sha256")
+      - name: Package Windows multi-file application and installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifacts | Out-Null
+          $exe = Get-ChildItem -Path stage -Filter JSON-API-Forge-Editor.exe -Recurse | Select-Object -First 1
+          if (-not $exe) { throw "Installed Editor executable not found" }
+          & windeployqt --release --no-translations --compiler-runtime $exe.FullName
+          Copy-Item EDITOR.md,LICENSE -Destination stage
+          $runtimeRoot = $exe.Directory.FullName
+          foreach ($relative in @("Qt6Core.dll", "Qt6Gui.dll", "Qt6Widgets.dll", "platforms/qwindows.dll")) {
+            if (-not (Test-Path (Join-Path $runtimeRoot $relative) -PathType Leaf)) {
+              throw "windeployqt did not stage required runtime file: $relative"
+            }
+          }
+          $count = (Get-ChildItem stage -Recurse -File).Count
+          if ($count -lt 12) { throw "Portable application is incomplete: only $count files" }
+          $screenshot = Join-Path (Resolve-Path artifacts) "editor-packaged-${{ matrix.artifact }}.png"
+          $env:QT_QPA_PLATFORM = "offscreen"
+          $process = Start-Process -FilePath $exe.FullName -ArgumentList @("--window-size", "1024x640", "--screenshot", $screenshot) -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Packaged Editor exited with code $($process.ExitCode)" }
+          if (-not (Test-Path $screenshot) -or (Get-Item $screenshot).Length -eq 0) {
+            throw "Packaged Editor screenshot smoke test failed"
+          }
+          $archive = "JSON-API-Forge-Editor-v0.5.0-${{ matrix.artifact }}.zip"
+          Compress-Archive -Path stage/* -DestinationPath "artifacts/$archive"
+          $outPath = Join-Path (Resolve-Path artifacts) "JSON-API-Forge-Editor-v0.5.0-${{ matrix.artifact }}-setup.exe"
+          ./editor/packaging/qtifw/build-installer.ps1 -StageDir stage -OutputFile $outPath
+          $installer = Split-Path -Leaf $outPath
+          if ((Get-Item "artifacts/$installer").Length -lt 1000000) { throw "Qt IFW installer appears truncated" }
+          foreach ($name in @($archive, $installer)) {
+            $hash = (Get-FileHash "artifacts/$name" -Algorithm SHA256).Hash.ToLowerInvariant()
+            [IO.File]::WriteAllText(
+              (Join-Path (Resolve-Path artifacts) "$name.sha256"),
+              "$hash  $name" + [Environment]::NewLine,
+              [Text.UTF8Encoding]::new($false)
+            )
+          }
+      - name: Package macOS multi-file application and installer
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          app_path=$(find stage -maxdepth 2 -name '*.app' -type d -print -quit)
+          test -n "$app_path"
+          macdeployqt "$app_path" -always-overwrite
+          cp EDITOR.md LICENSE stage/
+          test "$(find "$app_path" -type f | wc -l)" -gt 20
+          QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu \
+            "$app_path/Contents/MacOS/JSON-API-Forge-Editor" \
+            --window-size 1024x640 \
+            --screenshot "artifacts/editor-packaged-${{ matrix.artifact }}.png"
+          test -s "artifacts/editor-packaged-${{ matrix.artifact }}.png"
+          archive="JSON-API-Forge-Editor-v0.5.0-${{ matrix.artifact }}.zip"
+          ditto -c -k --sequesterRsrc --keepParent stage "artifacts/$archive"
+          dmgroot="${{ runner.temp }}/forge-editor-dmg"
+          mkdir -p "$dmgroot"
+          cp -R "$app_path" "$dmgroot/"
+          ln -s /Applications "$dmgroot/Applications"
+          installer="JSON-API-Forge-Editor-v0.5.0-${{ matrix.artifact }}.dmg"
+          hdiutil create -volname "JSON API Forge Editor" -srcfolder "$dmgroot" \
+            -ov -format UDZO "artifacts/$installer"
+          hdiutil verify "artifacts/$installer"
+          (cd artifacts && shasum -a 256 "$archive" > "$archive.sha256")
+          (cd artifacts && shasum -a 256 "$installer" > "$installer.sha256")
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: JSON-API-Forge-Editor-v0.5.0-${{ matrix.artifact }}
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 30
+
+  sanitizers:
+    name: Linux ASan + UBSan security test
+    needs: preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730 # v4
+        with:
+          version: "6.8.3"
+          cache: true
+      - name: Configure sanitizer build
+        run: >-
+          cmake -S . -B build/sanitizers -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DBUILD_TESTING=ON
+          -DFORGE_EDITOR_WARNINGS_AS_ERRORS=ON
+          -DFORGE_EDITOR_ENABLE_SANITIZERS=ON
+      - name: Compile sanitizer build
+        run: cmake --build build/sanitizers --parallel 2
+      - name: Run memory and undefined-behavior checks
+        env:
+          ASAN_OPTIONS: detect_leaks=0:halt_on_error=1:strict_string_checks=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: ctest --test-dir build/sanitizers --output-on-failure
+
+  bundle:
+    name: Combined Editor release bundle
+    needs: [build, sanitizers]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: JSON-API-Forge-Editor-v0.5.0-*
+          path: downloads
+      - name: Verify installers and portable archives
+        run: |
+          set -euo pipefail
+          find downloads -type f -name '*.sha256' -print0 | while IFS= read -r -d '' checksum; do
+            (cd "$(dirname "$checksum")" && sha256sum -c "$(basename "$checksum")")
+          done
+          test "$(find downloads -type f -name '*.zip' | wc -l)" -eq 6
+          test "$(find downloads -type f \( -name '*.deb' -o -name '*-setup.exe' -o -name '*.dmg' \) | wc -l)" -eq 6
+          mkdir release-assets
+          find downloads -type f \( \
+            -name 'JSON-API-Forge-Editor-v0.5.0-*.zip' -o \
+            -name 'JSON-API-Forge-Editor-v0.5.0-*.deb' -o \
+            -name 'JSON-API-Forge-Editor-v0.5.0-*-setup.exe' -o \
+            -name 'JSON-API-Forge-Editor-v0.5.0-*.dmg' -o \
+            -name 'JSON-API-Forge-Editor-v0.5.0-*.sha256' \
+          \) -exec cp {} release-assets/ \;
+          test "$(find release-assets -maxdepth 1 -type f -name '*.zip' | wc -l)" -eq 6
+          test "$(find release-assets -maxdepth 1 -type f \( -name '*.deb' -o -name '*-setup.exe' -o -name '*.dmg' \) | wc -l)" -eq 6
+          test "$(find release-assets -maxdepth 1 -type f -name '*.sha256' | wc -l)" -eq 12
+          cp EDITOR.md RELEASE_ASSETS.md LICENSE release-assets/
+          (cd release-assets && find . -maxdepth 1 -type f \( -name '*.zip' -o -name '*.deb' -o -name '*-setup.exe' -o -name '*.dmg' \) -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
+          (cd release-assets && zip -9 -r ../JSON-API-Forge-Editor-v0.5.0-all-platforms.zip .)
+          sha256sum JSON-API-Forge-Editor-v0.5.0-all-platforms.zip \
+            > JSON-API-Forge-Editor-v0.5.0-all-platforms.zip.sha256
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: JSON-API-Forge-Editor-v0.5.0-release-assets
+          path: |
+            release-assets/*
+            JSON-API-Forge-Editor-v0.5.0-all-platforms.zip
+            JSON-API-Forge-Editor-v0.5.0-all-platforms.zip.sha256
+          if-no-files-found: error
+          retention-days: 30

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Package>
+    <DisplayName>JSON API Forge Editor</DisplayName>
+    <Description>Policy-aware visual and code editor for JSON API Forge.</Description>
+    <Version>0.5.0-1</Version>
+    <ReleaseDate>2026-08-26</ReleaseDate>
+    <Name>dev.jsonapiforge.editor</Name>
+    <Licenses>
+        <License name="JSON API Forge Source-Available License" file="license.txt" />
+    </Licenses>
+    <Default>true</Default>
+    <ForcedInstallation>true</ForcedInstallation>
+    <Essential>true</Essential>
+    <RequiresAdminRights>true</RequiresAdminRights>
+    <Script>installscript.qs</Script>
+</Package>

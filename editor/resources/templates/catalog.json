@@ -1,0 +1,101 @@
+{
+  "version": 1,
+  "templates": [
+    {
+      "id": "secure-crud",
+      "name": "Secure Operations Hub",
+      "category": "Foundation",
+      "description": "A production-minded CRUD service with one-time bootstrap, scoped roles, soft deletion, caching, analytics RPC, events, and a visual operation graph.",
+      "entity": "operational records",
+      "table": "operations_records",
+      "path": "operations/records",
+      "permission_prefix": "operations.records",
+      "operation_name": "operations.summary",
+      "default_status": "active"
+    },
+    {
+      "id": "saas-control-plane",
+      "name": "SaaS Control Plane",
+      "category": "Platform",
+      "description": "Tenant-aware control-plane scaffolding for plans, account ownership, lifecycle status, usage amounts, audit-friendly updates, and operator analytics.",
+      "entity": "tenant subscriptions",
+      "table": "tenant_subscriptions",
+      "path": "tenants/subscriptions",
+      "permission_prefix": "tenants.subscriptions",
+      "operation_name": "tenants.subscription-summary",
+      "default_status": "trial"
+    },
+    {
+      "id": "event-orders",
+      "name": "Event-Driven Commerce",
+      "category": "Commerce",
+      "description": "Order lifecycle foundation with idempotency-ready operation design, searchable ownership, monetary totals, realtime status channels, and aggregate reporting.",
+      "entity": "commerce orders",
+      "table": "commerce_orders",
+      "path": "commerce/orders",
+      "permission_prefix": "commerce.orders",
+      "operation_name": "commerce.order-summary",
+      "default_status": "pending"
+    },
+    {
+      "id": "analytics-read-model",
+      "name": "Analytics Read Model",
+      "category": "Data",
+      "description": "Cached read-model API for materialized business metrics with bounded filtering, scoped visibility, status rollups, and a query-first graph.",
+      "entity": "analytics snapshots",
+      "table": "analytics_snapshots",
+      "path": "analytics/snapshots",
+      "permission_prefix": "analytics.snapshots",
+      "operation_name": "analytics.status-rollup",
+      "default_status": "fresh"
+    },
+    {
+      "id": "plugin-registry",
+      "name": "Forge Plugin Registry",
+      "category": "Editor",
+      "description": "Metadata registry for Editor plugins, release state and package ownership. It is designed for the Editor's Forge-backed catalog client; native code remains explicitly approved.",
+      "entity": "plugin releases",
+      "table": "editor_plugin_releases",
+      "path": "editor/plugins",
+      "permission_prefix": "editor.plugins",
+      "operation_name": "editor.plugin-summary",
+      "default_status": "review"
+    },
+    {
+      "id": "python-enterprise-gateway",
+      "name": "Python Enterprise Gateway",
+      "category": "Integration",
+      "description": "Integration boundary for large Python systems using the sync/async SDK, cluster routing, DDM payloads, ownership fields, events, and operational health summaries.",
+      "entity": "integration jobs",
+      "table": "integration_jobs",
+      "path": "integrations/jobs",
+      "permission_prefix": "integrations.jobs",
+      "operation_name": "integrations.job-summary",
+      "default_status": "queued"
+    },
+    {
+      "id": "media-operations",
+      "name": "Media Operations",
+      "category": "Content",
+      "description": "Media workflow control plane for asset ownership, processing state, bounded metadata, lifecycle events, soft deletion, and aggregate workload visibility.",
+      "entity": "media processing jobs",
+      "table": "media_processing_jobs",
+      "path": "media/jobs",
+      "permission_prefix": "media.jobs",
+      "operation_name": "media.processing-summary",
+      "default_status": "uploaded"
+    },
+    {
+      "id": "ledger-workflow",
+      "name": "Audited Ledger Workflow",
+      "category": "Finance",
+      "description": "A restricted ledger workflow scaffold with scoped operators, amount bounds, owner indexing, immutable-intent graph design, realtime notifications, and status totals.",
+      "entity": "ledger batches",
+      "table": "ledger_batches",
+      "path": "ledger/batches",
+      "permission_prefix": "ledger.batches",
+      "operation_name": "ledger.batch-summary",
+      "default_status": "draft"
+    }
+  ]
+}

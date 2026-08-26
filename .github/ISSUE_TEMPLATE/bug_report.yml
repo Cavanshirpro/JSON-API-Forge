@@ -1,0 +1,50 @@
+name: Bug report
+description: Report a reproducible defect in an official Editor build
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include secrets or undisclosed vulnerability details here. Use SECURITY.md for security issues.
+  - type: input
+    id: version
+    attributes:
+      label: Editor version
+      placeholder: 0.5.0
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Platform and architecture
+      placeholder: Windows 11 x64, Ubuntu 24.04 ARM64, macOS 15 Intel, etc.
+    validations:
+      required: true
+  - type: input
+    id: artifact
+    attributes:
+      label: Build or artifact
+      description: State whether this was a local build, portable ZIP, DEB, NSIS EXE or DMG.
+      placeholder: JSON-API-Forge-Editor-v0.5.0-windows-x64.zip
+    validations:
+      required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Describe the observed and expected behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Minimal reproduction
+      description: Include steps and sanitized settings with all secrets/private data removed.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or traceback
+      render: shell

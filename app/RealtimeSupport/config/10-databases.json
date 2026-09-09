@@ -1,0 +1,9 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "databases": {
+    "primary": {
+      "url": "$env:REALTIME_SUPPORT_DATABASE_URL:-sqlite+aiosqlite:///./data/realtime-support.db",
+      "pool_pre_ping": true
+    }
+  }
+}

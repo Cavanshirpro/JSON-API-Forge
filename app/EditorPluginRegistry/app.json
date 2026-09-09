@@ -1,0 +1,9 @@
+{
+  "$schema": "../../schemas/manifest.schema.json",
+  "slug": "editor-plugin-registry",
+  "name": "Editor Plugin Registry",
+  "version": "1.0.0",
+  "api_prefix": "/api/editor-plugin-registry/v1",
+  "docs_enabled": true,
+  "audit_enabled": true
+}

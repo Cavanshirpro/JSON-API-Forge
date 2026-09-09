@@ -1,0 +1,57 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "security": {
+    "bootstrap_enabled": true,
+    "bootstrap_admin_key": "$env:CREATOR_STUDIO_BOOTSTRAP_ADMIN_KEY",
+    "bootstrap_one_time": true,
+    "allow_query_api_key": false,
+    "allow_websocket_query_api_key": false
+  },
+  "roles": {
+    "admin": {
+      "permissions": [
+        "*"
+      ]
+    },
+    "operator": {
+      "permissions": [
+        "creator.audit-events.create",
+        "creator.audit-events.delete",
+        "creator.audit-events.list",
+        "creator.audit-events.read",
+        "creator.audit-events.update",
+        "creator.events.publish",
+        "creator.events.subscribe",
+        "creator.policies.create",
+        "creator.policies.delete",
+        "creator.policies.list",
+        "creator.policies.read",
+        "creator.policies.update",
+        "creator.productions.analytics",
+        "creator.productions.assign",
+        "creator.productions.create",
+        "creator.productions.delete",
+        "creator.productions.list",
+        "creator.productions.read",
+        "creator.productions.transition",
+        "creator.productions.update",
+        "creator.workflows.create",
+        "creator.workflows.delete",
+        "creator.workflows.list",
+        "creator.workflows.read",
+        "creator.workflows.update",
+        "system.meta.read"
+      ]
+    },
+    "auditor": {
+      "permissions": [
+        "creator.productions.list",
+        "creator.productions.read",
+        "creator.audit-events.list",
+        "creator.audit-events.read",
+        "creator.productions.analytics",
+        "system.meta.read"
+      ]
+    }
+  }
+}

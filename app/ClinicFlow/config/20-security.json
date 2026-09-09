@@ -1,0 +1,57 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "security": {
+    "bootstrap_enabled": true,
+    "bootstrap_admin_key": "$env:CLINIC_FLOW_BOOTSTRAP_ADMIN_KEY",
+    "bootstrap_one_time": true,
+    "allow_query_api_key": false,
+    "allow_websocket_query_api_key": false
+  },
+  "roles": {
+    "admin": {
+      "permissions": [
+        "*"
+      ]
+    },
+    "operator": {
+      "permissions": [
+        "clinic.audit-events.create",
+        "clinic.audit-events.delete",
+        "clinic.audit-events.list",
+        "clinic.audit-events.read",
+        "clinic.audit-events.update",
+        "clinic.care_cases.analytics",
+        "clinic.care_cases.assign",
+        "clinic.care_cases.create",
+        "clinic.care_cases.delete",
+        "clinic.care_cases.list",
+        "clinic.care_cases.read",
+        "clinic.care_cases.transition",
+        "clinic.care_cases.update",
+        "clinic.events.publish",
+        "clinic.events.subscribe",
+        "clinic.policies.create",
+        "clinic.policies.delete",
+        "clinic.policies.list",
+        "clinic.policies.read",
+        "clinic.policies.update",
+        "clinic.workflows.create",
+        "clinic.workflows.delete",
+        "clinic.workflows.list",
+        "clinic.workflows.read",
+        "clinic.workflows.update",
+        "system.meta.read"
+      ]
+    },
+    "auditor": {
+      "permissions": [
+        "clinic.care_cases.list",
+        "clinic.care_cases.read",
+        "clinic.audit-events.list",
+        "clinic.audit-events.read",
+        "clinic.care_cases.analytics",
+        "system.meta.read"
+      ]
+    }
+  }
+}

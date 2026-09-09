@@ -1,0 +1,203 @@
+#!/usr/bin/env python3
+"""Create the deterministic, copy-ready exampleApps release ZIP."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import os
+import stat
+import subprocess
+import tempfile
+import zipfile
+from datetime import datetime, timezone
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+BUNDLE_DOCUMENTS = (
+    "LICENSE",
+    "LICENSE-FAQ.md",
+    "NOTICE.md",
+    "THIRD_PARTY_NOTICES.md",
+    "TRADEMARK_POLICY.md",
+    "AI_USAGE_POLICY.md",
+    "LICENSE-HISTORY.md",
+    "LICENSE-METADATA.json",
+    "README.md",
+    "VERSION",
+    "CONTRIBUTING.md",
+    "CONTRIBUTOR_LICENSE_AGREEMENT.md",
+    "SECURITY.md",
+    "GOVERNANCE.md",
+    "OWNERSHIP.md",
+)
+MAX_FILES = 10_000
+MAX_TOTAL_BYTES = 256 * 1024 * 1024
+MAX_FILE_BYTES = 16 * 1024 * 1024
+
+
+def _source_date_epoch() -> int:
+    configured = os.environ.get("SOURCE_DATE_EPOCH")
+    if configured:
+        return int(configured)
+    try:
+        return int(
+            subprocess.check_output(
+                ["git", "log", "-1", "--pretty=%ct"],
+                cwd=ROOT,
+                text=True,
+                stderr=subprocess.DEVNULL,
+            ).strip()
+        )
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return 315_532_800
+
+
+def _sources() -> list[tuple[Path, str, os.stat_result]]:
+    app_root = ROOT / "app"
+    if app_root.is_symlink() or not app_root.is_dir():
+        raise RuntimeError("app root must be a real directory")
+    paths = []
+    for count, path in enumerate(app_root.rglob("*"), 1):
+        if count > MAX_FILES * 2:
+            raise RuntimeError("bundle source contains too many directory entries")
+        if path.is_symlink():
+            raise RuntimeError(f"bundle source contains symlinks: {path}")
+        if path.is_file():
+            paths.append(path)
+    paths.extend(
+        [
+            *(ROOT / name for name in BUNDLE_DOCUMENTS),
+            ROOT / "EXAMPLE_APPS.md",
+            ROOT / "scripts/install-example.sh",
+            ROOT / "scripts/install-example.ps1",
+        ]
+    )
+    if len(paths) > MAX_FILES:
+        raise RuntimeError(f"bundle file count exceeds {MAX_FILES}")
+
+    result: list[tuple[Path, str, os.stat_result]] = []
+    names = set()
+    total = 0
+    for path in paths:
+        metadata = path.lstat()
+        if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
+            raise RuntimeError(
+                f"bundle source must be a regular non-symlink file: {path}"
+            )
+        if metadata.st_size > MAX_FILE_BYTES:
+            raise RuntimeError(f"bundle file exceeds {MAX_FILE_BYTES} bytes: {path}")
+        total += metadata.st_size
+        if total > MAX_TOTAL_BYTES:
+            raise RuntimeError(f"bundle content exceeds {MAX_TOTAL_BYTES} bytes")
+        name = path.relative_to(ROOT).as_posix()
+        if (
+            name.casefold() in names
+            or any(char in name for char in "\\:")
+            or any(ord(char) < 32 or ord(char) == 127 for char in name)
+        ):
+            raise RuntimeError(
+                f"bundle source has an unsafe or colliding filename: {name!r}"
+            )
+        names.add(name.casefold())
+        result.append((path, name, metadata))
+    return sorted(result, key=lambda item: item[1])
+
+
+def build(output: Path) -> None:
+    output = output.resolve()
+    if output.is_relative_to((ROOT / "app").resolve()):
+        raise RuntimeError("bundle output must not be inside app sources")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    sources = _sources()
+    timestamp = datetime.fromtimestamp(
+        min(max(_source_date_epoch(), 315_532_800), 4_354_819_198), tz=timezone.utc
+    ).timetuple()[:6]
+    checksums: list[str] = []
+
+    fd, temporary_name = tempfile.mkstemp(
+        prefix=f".{output.name}.", suffix=".tmp", dir=output.parent
+    )
+    temporary = Path(temporary_name)
+    try:
+        with (
+            os.fdopen(fd, "wb") as destination,
+            zipfile.ZipFile(
+                destination, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9
+            ) as archive,
+        ):
+            for path, name, expected in sources:
+                info = zipfile.ZipInfo(name, timestamp)
+                info.create_system = 3
+                mode = (
+                    0o100755
+                    if name == "scripts/install-example.sh" or expected.st_mode & 0o111
+                    else 0o100644
+                )
+                info.external_attr = mode << 16
+                info.compress_type = zipfile.ZIP_DEFLATED
+                digest = hashlib.sha256()
+                source_fd = os.open(
+                    path,
+                    os.O_RDONLY
+                    | getattr(os, "O_NOFOLLOW", 0)
+                    | getattr(os, "O_BINARY", 0),
+                )
+                with os.fdopen(source_fd, "rb") as source:
+                    before = os.fstat(source.fileno())
+
+                    def identity(value):
+                        return (
+                            value.st_dev,
+                            value.st_ino,
+                            value.st_size,
+                            value.st_mtime_ns,
+                            value.st_ctime_ns,
+                        )
+
+                    if not stat.S_ISREG(before.st_mode) or identity(before) != identity(
+                        expected
+                    ):
+                        raise RuntimeError(
+                            f"bundle source changed before reading: {name}"
+                        )
+                    size = 0
+                    with archive.open(info, "w") as member:
+                        while chunk := source.read(1024 * 1024):
+                            size += len(chunk)
+                            if size > expected.st_size or size > MAX_FILE_BYTES:
+                                raise RuntimeError(
+                                    f"bundle source grew while reading: {name}"
+                                )
+                            digest.update(chunk)
+                            member.write(chunk)
+                    if size != expected.st_size or identity(
+                        os.fstat(source.fileno())
+                    ) != identity(before):
+                        raise RuntimeError(
+                            f"bundle source changed while reading: {name}"
+                        )
+                checksums.append(f"{digest.hexdigest()}  {name}")
+
+            checksum_content = ("\n".join(checksums) + "\n").encode()
+            info = zipfile.ZipInfo("SHA256SUMS", timestamp)
+            info.create_system = 3
+            info.external_attr = 0o100644 << 16
+            info.compress_type = zipfile.ZIP_DEFLATED
+            archive.writestr(info, checksum_content, compresslevel=9)
+        os.replace(temporary, output)
+    finally:
+        temporary.unlink(missing_ok=True)
+    print(f"Wrote {output} with {len(sources)} source files")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("output", type=Path)
+    args = parser.parse_args()
+    build(args.output)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

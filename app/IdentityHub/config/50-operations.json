@@ -1,0 +1,171 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "operations": [
+    {
+      "name": "identity.dashboard",
+      "method": "GET",
+      "database": "primary",
+      "permission": "identity.profiles.analytics",
+      "transaction": false,
+      "statements": [
+        {
+          "sql": "SELECT status, COUNT(*) AS records, COALESCE(SUM(amount), 0) AS total_amount, COALESCE(AVG(priority), 0) AS average_priority FROM identity_profiles WHERE deleted_at IS NULL GROUP BY status ORDER BY status",
+          "mode": "fetch_all",
+          "params": {},
+          "result_name": "status_summary",
+          "max_rows": 100
+        }
+      ],
+      "cache": {
+        "enabled": true,
+        "ttl_seconds": 15,
+        "vary_by_principal": true
+      },
+      "summary": "Bounded operational dashboard for Identity Hub"
+    },
+    {
+      "name": "identity.transition",
+      "method": "POST",
+      "database": "primary",
+      "permission": "identity.profiles.transition",
+      "transaction": true,
+      "idempotency": true,
+      "input_schema": {
+        "type": "object",
+        "required": [
+          "record_id",
+          "next_status",
+          "actor_id"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "record_id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "next_status": {
+            "type": "string",
+            "enum": [
+              "invited",
+              "active",
+              "locked",
+              "archived"
+            ]
+          },
+          "actor_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 96
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 500
+          }
+        }
+      },
+      "statements": [
+        {
+          "sql": "UPDATE identity_profiles SET status = :next_status, updated_at = CURRENT_TIMESTAMP WHERE id = :record_id AND deleted_at IS NULL",
+          "mode": "execute",
+          "params": {
+            "next_status": "$body.next_status",
+            "record_id": "$body.record_id"
+          },
+          "require_rowcount_min": 1,
+          "require_rowcount_max": 1,
+          "result_name": "transition"
+        },
+        {
+          "sql": "INSERT INTO identity_audit_events (record_id, event_type, actor_id, payload, idempotency_key, created_at) VALUES (:record_id, :event_type, :actor_id, :payload, :idempotency_key, CURRENT_TIMESTAMP)",
+          "mode": "execute",
+          "params": {
+            "record_id": "$body.record_id",
+            "event_type": "status.transitioned",
+            "actor_id": "$body.actor_id",
+            "payload": "$body.next_status",
+            "idempotency_key": "$header.Idempotency-Key"
+          },
+          "result_name": "audit"
+        }
+      ],
+      "invalidate_resources": [
+        "identity/profiles",
+        "identity/audit-events"
+      ],
+      "invalidate_operations": [
+        "identity.dashboard"
+      ],
+      "summary": "Atomic, idempotent state transition with audit insertion"
+    },
+    {
+      "name": "identity.assign",
+      "method": "POST",
+      "database": "primary",
+      "permission": "identity.profiles.assign",
+      "transaction": true,
+      "idempotency": true,
+      "input_schema": {
+        "type": "object",
+        "required": [
+          "record_id",
+          "assigned_to",
+          "step"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "record_id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "assigned_to": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 96
+          },
+          "step": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "due_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "statements": [
+        {
+          "sql": "INSERT INTO identity_workflows (record_id, step, state, assigned_to, due_at, details, created_at) VALUES (:record_id, :step, 'open', :assigned_to, :due_at, :details, CURRENT_TIMESTAMP)",
+          "mode": "execute",
+          "params": {
+            "record_id": "$body.record_id",
+            "step": "$body.step",
+            "assigned_to": "$body.assigned_to",
+            "due_at": "$body.due_at",
+            "details": "$body.step"
+          },
+          "result_name": "assignment"
+        },
+        {
+          "sql": "UPDATE identity_profiles SET owner_id = :assigned_to, updated_at = CURRENT_TIMESTAMP WHERE id = :record_id AND deleted_at IS NULL",
+          "mode": "execute",
+          "params": {
+            "assigned_to": "$body.assigned_to",
+            "record_id": "$body.record_id"
+          },
+          "require_rowcount_min": 1,
+          "require_rowcount_max": 1,
+          "result_name": "owner_update"
+        }
+      ],
+      "invalidate_resources": [
+        "identity/profiles",
+        "identity/workflows"
+      ],
+      "summary": "Atomic workflow assignment and ownership update"
+    }
+  ]
+}

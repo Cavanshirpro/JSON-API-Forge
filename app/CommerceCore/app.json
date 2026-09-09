@@ -1,0 +1,9 @@
+{
+  "$schema": "../../schemas/manifest.schema.json",
+  "slug": "commerce-core",
+  "name": "Commerce Core",
+  "version": "1.0.0",
+  "api_prefix": "/api/commerce-core/v1",
+  "docs_enabled": true,
+  "audit_enabled": true
+}

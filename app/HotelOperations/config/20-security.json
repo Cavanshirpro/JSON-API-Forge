@@ -1,0 +1,57 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "security": {
+    "bootstrap_enabled": true,
+    "bootstrap_admin_key": "$env:HOTEL_OPERATIONS_BOOTSTRAP_ADMIN_KEY",
+    "bootstrap_one_time": true,
+    "allow_query_api_key": false,
+    "allow_websocket_query_api_key": false
+  },
+  "roles": {
+    "admin": {
+      "permissions": [
+        "*"
+      ]
+    },
+    "operator": {
+      "permissions": [
+        "hotel.audit-events.create",
+        "hotel.audit-events.delete",
+        "hotel.audit-events.list",
+        "hotel.audit-events.read",
+        "hotel.audit-events.update",
+        "hotel.events.publish",
+        "hotel.events.subscribe",
+        "hotel.policies.create",
+        "hotel.policies.delete",
+        "hotel.policies.list",
+        "hotel.policies.read",
+        "hotel.policies.update",
+        "hotel.reservations.analytics",
+        "hotel.reservations.assign",
+        "hotel.reservations.create",
+        "hotel.reservations.delete",
+        "hotel.reservations.list",
+        "hotel.reservations.read",
+        "hotel.reservations.transition",
+        "hotel.reservations.update",
+        "hotel.workflows.create",
+        "hotel.workflows.delete",
+        "hotel.workflows.list",
+        "hotel.workflows.read",
+        "hotel.workflows.update",
+        "system.meta.read"
+      ]
+    },
+    "auditor": {
+      "permissions": [
+        "hotel.reservations.list",
+        "hotel.reservations.read",
+        "hotel.audit-events.list",
+        "hotel.audit-events.read",
+        "hotel.reservations.analytics",
+        "system.meta.read"
+      ]
+    }
+  }
+}

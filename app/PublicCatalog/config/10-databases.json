@@ -1,0 +1,9 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "databases": {
+    "primary": {
+      "url": "$env:PUBLIC_CATALOG_DATABASE_URL:-sqlite+aiosqlite:///./data/public-catalog.db",
+      "pool_pre_ping": true
+    }
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "security": {
+    "bootstrap_enabled": true,
+    "bootstrap_admin_key": "$env:MEDIA_LIBRARY_BOOTSTRAP_ADMIN_KEY",
+    "bootstrap_one_time": true,
+    "allow_query_api_key": false
+  },
+  "roles": {
+    "admin": {"permissions": ["*"]},
+    "media_contributor": {
+      "permissions": [
+        "media.upload",
+        "media.read",
+        "media.delete",
+        "collections.list",
+        "collections.read",
+        "collections.create",
+        "collections.update",
+        "system.meta.read"
+      ]
+    },
+    "media_reader": {
+      "permissions": ["media.read", "collections.list", "collections.read", "system.meta.read"]
+    }
+  }
+}

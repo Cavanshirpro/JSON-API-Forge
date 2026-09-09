@@ -1,0 +1,9 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "databases": {
+    "primary": {
+      "url": "$env:CREATOR_STUDIO_DATABASE_URL:-sqlite+aiosqlite:///./data/creator-studio.db",
+      "pool_pre_ping": true
+    }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "$schema": "../../schemas/manifest.schema.json",
+  "slug": "hiring-pipeline",
+  "name": "Hiring Pipeline",
+  "version": "1.0.0",
+  "api_prefix": "/api/hiring-pipeline/v1",
+  "docs_enabled": true,
+  "audit_enabled": true
+}

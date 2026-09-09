@@ -1,0 +1,9 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "databases": {
+    "primary": {
+      "url": "$env:RESTAURANT_NETWORK_DATABASE_URL:-sqlite+aiosqlite:///./data/restaurant-network.db",
+      "pool_pre_ping": true
+    }
+  }
+}

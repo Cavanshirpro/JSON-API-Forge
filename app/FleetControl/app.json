@@ -1,0 +1,9 @@
+{
+  "$schema": "../../schemas/manifest.schema.json",
+  "slug": "fleet-control",
+  "name": "Fleet Control",
+  "version": "1.0.0",
+  "api_prefix": "/api/fleet-control/v1",
+  "docs_enabled": true,
+  "audit_enabled": true
+}

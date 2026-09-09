@@ -1,0 +1,57 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "security": {
+    "bootstrap_enabled": true,
+    "bootstrap_admin_key": "$env:RESEARCH_VAULT_BOOTSTRAP_ADMIN_KEY",
+    "bootstrap_one_time": true,
+    "allow_query_api_key": false,
+    "allow_websocket_query_api_key": false
+  },
+  "roles": {
+    "admin": {
+      "permissions": [
+        "*"
+      ]
+    },
+    "operator": {
+      "permissions": [
+        "research.audit-events.create",
+        "research.audit-events.delete",
+        "research.audit-events.list",
+        "research.audit-events.read",
+        "research.audit-events.update",
+        "research.datasets.analytics",
+        "research.datasets.assign",
+        "research.datasets.create",
+        "research.datasets.delete",
+        "research.datasets.list",
+        "research.datasets.read",
+        "research.datasets.transition",
+        "research.datasets.update",
+        "research.events.publish",
+        "research.events.subscribe",
+        "research.policies.create",
+        "research.policies.delete",
+        "research.policies.list",
+        "research.policies.read",
+        "research.policies.update",
+        "research.workflows.create",
+        "research.workflows.delete",
+        "research.workflows.list",
+        "research.workflows.read",
+        "research.workflows.update",
+        "system.meta.read"
+      ]
+    },
+    "auditor": {
+      "permissions": [
+        "research.datasets.list",
+        "research.datasets.read",
+        "research.audit-events.list",
+        "research.audit-events.read",
+        "research.datasets.analytics",
+        "system.meta.read"
+      ]
+    }
+  }
+}

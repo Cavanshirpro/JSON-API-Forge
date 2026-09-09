@@ -1,0 +1,33 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "security": {
+    "bootstrap_enabled": true,
+    "bootstrap_admin_key": "$env:REALTIME_SUPPORT_BOOTSTRAP_ADMIN_KEY",
+    "bootstrap_one_time": true,
+    "allow_query_api_key": false,
+    "allow_websocket_query_api_key": false
+  },
+  "roles": {
+    "admin": {"permissions": ["*"]},
+    "support_agent": {
+      "permissions": [
+        "support.tickets.list",
+        "support.tickets.read",
+        "support.tickets.create",
+        "support.tickets.update",
+        "support.tickets.delete",
+        "support.events.publish",
+        "support.events.subscribe",
+        "system.meta.read"
+      ]
+    },
+    "support_viewer": {
+      "permissions": [
+        "support.tickets.list",
+        "support.tickets.read",
+        "support.events.subscribe",
+        "system.meta.read"
+      ]
+    }
+  }
+}

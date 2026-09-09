@@ -1,0 +1,10 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "security": {
+    "bootstrap_enabled": false,
+    "bootstrap_one_time": true,
+    "jwt_enabled": false,
+    "allow_query_api_key": false,
+    "allow_websocket_query_api_key": false
+  }
+}

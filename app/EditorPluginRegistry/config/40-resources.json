@@ -1,0 +1,587 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "resources": [
+    {
+      "database": "primary",
+      "table": "editor_plugins",
+      "path": "editor/plugins",
+      "auto_create": true,
+      "columns": {
+        "id": {
+          "type": "integer",
+          "primary_key": true,
+          "nullable": false
+        },
+        "external_id": {
+          "type": "string",
+          "nullable": false,
+          "unique": true,
+          "index": true,
+          "max_length": 96
+        },
+        "name": {
+          "type": "string",
+          "nullable": false,
+          "index": true,
+          "max_length": 160
+        },
+        "status": {
+          "type": "string",
+          "nullable": false,
+          "default": "review",
+          "index": true,
+          "max_length": 32
+        },
+        "owner_id": {
+          "type": "string",
+          "nullable": false,
+          "index": true,
+          "max_length": 96
+        },
+        "amount": {
+          "type": "integer",
+          "nullable": false,
+          "default": 0,
+          "index": true
+        },
+        "priority": {
+          "type": "integer",
+          "nullable": false,
+          "default": 0,
+          "index": true
+        },
+        "metadata": {
+          "type": "json"
+        },
+        "created_at": {
+          "type": "datetime",
+          "index": true
+        },
+        "updated_at": {
+          "type": "datetime"
+        },
+        "deleted_at": {
+          "type": "datetime",
+          "index": true
+        },
+        "plugin_id": {
+          "type": "string",
+          "nullable": false,
+          "index": true,
+          "max_length": 128
+        },
+        "version": {
+          "type": "string",
+          "nullable": false,
+          "index": true,
+          "max_length": 64
+        },
+        "publisher": {
+          "type": "string",
+          "nullable": false,
+          "index": true,
+          "max_length": 128
+        },
+        "platform": {
+          "type": "string",
+          "nullable": false,
+          "default": "any",
+          "index": true,
+          "max_length": 64
+        },
+        "download_url": {
+          "type": "string",
+          "nullable": false,
+          "max_length": 1024
+        },
+        "sha256": {
+          "type": "string",
+          "nullable": false,
+          "index": true,
+          "max_length": 64
+        },
+        "permissions": {
+          "type": "json"
+        },
+        "description": {
+          "type": "text"
+        }
+      },
+      "writable_fields": [
+        "external_id",
+        "name",
+        "status",
+        "owner_id",
+        "amount",
+        "priority",
+        "metadata",
+        "plugin_id",
+        "version",
+        "publisher",
+        "platform",
+        "download_url",
+        "sha256",
+        "permissions",
+        "description"
+      ],
+      "allowed_filters": [
+        "status",
+        "owner_id",
+        "amount",
+        "priority",
+        "created_at"
+      ],
+      "filter_operators": [
+        "eq",
+        "ne",
+        "gt",
+        "gte",
+        "lt",
+        "lte",
+        "in",
+        "isnull"
+      ],
+      "allowed_sort": [
+        "id",
+        "name",
+        "status",
+        "amount",
+        "priority",
+        "created_at"
+      ],
+      "permissions": {
+        "list": "editor.plugins.list",
+        "read": "editor.plugins.read",
+        "create": "editor.plugins.create",
+        "update": "editor.plugins.update",
+        "delete": "editor.plugins.delete"
+      },
+      "search_fields": [
+        "external_id",
+        "name"
+      ],
+      "soft_delete_field": "deleted_at",
+      "create_schema": {
+        "type": "object",
+        "required": [
+          "external_id",
+          "name",
+          "owner_id",
+          "plugin_id",
+          "version",
+          "publisher",
+          "download_url",
+          "sha256"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "external_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 96
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "review",
+              "approved",
+              "deprecated",
+              "revoked"
+            ]
+          },
+          "owner_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 96
+          },
+          "amount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000000
+          },
+          "priority": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "metadata": {
+            "type": "object"
+          },
+          "plugin_id": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:[.-][a-z0-9]+)*$",
+            "maxLength": 128
+          },
+          "version": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "publisher": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "platform": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "download_url": {
+            "type": "string",
+            "pattern": "^https://",
+            "maxLength": 1024
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-fA-F0-9]{64}$"
+          },
+          "permissions": {
+            "type": "array",
+            "maxItems": 32,
+            "items": {
+              "type": "string",
+              "maxLength": 96
+            }
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000
+          }
+        }
+      },
+      "update_schema": {
+        "type": "object",
+        "minProperties": 1,
+        "additionalProperties": false,
+        "properties": {
+          "external_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 96
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "review",
+              "approved",
+              "deprecated",
+              "revoked"
+            ]
+          },
+          "owner_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 96
+          },
+          "amount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000000
+          },
+          "priority": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "metadata": {
+            "type": "object"
+          },
+          "plugin_id": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:[.-][a-z0-9]+)*$",
+            "maxLength": 128
+          },
+          "version": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "publisher": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "platform": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "download_url": {
+            "type": "string",
+            "pattern": "^https://",
+            "maxLength": 1024
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-fA-F0-9]{64}$"
+          },
+          "permissions": {
+            "type": "array",
+            "maxItems": 32,
+            "items": {
+              "type": "string",
+              "maxLength": 96
+            }
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000
+          }
+        }
+      },
+      "cache": {
+        "enabled": true,
+        "list_ttl_seconds": 10,
+        "read_ttl_seconds": 30
+      }
+    },
+    {
+      "database": "primary",
+      "table": "editor_workflows",
+      "path": "editor/workflows",
+      "auto_create": true,
+      "columns": {
+        "id": {
+          "type": "integer",
+          "primary_key": true,
+          "nullable": false
+        },
+        "record_id": {
+          "type": "integer",
+          "nullable": false,
+          "index": true
+        },
+        "step": {
+          "type": "string",
+          "nullable": false,
+          "index": true,
+          "max_length": 64
+        },
+        "state": {
+          "type": "string",
+          "nullable": false,
+          "default": "open",
+          "index": true,
+          "max_length": 32
+        },
+        "assigned_to": {
+          "type": "string",
+          "nullable": false,
+          "index": true,
+          "max_length": 96
+        },
+        "due_at": {
+          "type": "datetime",
+          "index": true
+        },
+        "details": {
+          "type": "json"
+        },
+        "created_at": {
+          "type": "datetime",
+          "index": true
+        }
+      },
+      "writable_fields": [
+        "record_id",
+        "step",
+        "state",
+        "assigned_to",
+        "due_at",
+        "details",
+        "created_at"
+      ],
+      "allowed_filters": [
+        "record_id",
+        "step",
+        "state",
+        "assigned_to",
+        "due_at"
+      ],
+      "filter_operators": [
+        "eq",
+        "ne",
+        "gt",
+        "gte",
+        "lt",
+        "lte",
+        "in",
+        "isnull"
+      ],
+      "allowed_sort": [
+        "id",
+        "state",
+        "due_at",
+        "created_at"
+      ],
+      "permissions": {
+        "list": "editor.workflows.list",
+        "read": "editor.workflows.read",
+        "create": "editor.workflows.create",
+        "update": "editor.workflows.update",
+        "delete": "editor.workflows.delete"
+      }
+    },
+    {
+      "database": "primary",
+      "table": "editor_audit_events",
+      "path": "editor/audit-events",
+      "auto_create": true,
+      "columns": {
+        "id": {
+          "type": "integer",
+          "primary_key": true,
+          "nullable": false
+        },
+        "record_id": {
+          "type": "integer",
+          "nullable": false,
+          "index": true
+        },
+        "event_type": {
+          "type": "string",
+          "nullable": false,
+          "index": true,
+          "max_length": 64
+        },
+        "actor_id": {
+          "type": "string",
+          "nullable": false,
+          "index": true,
+          "max_length": 96
+        },
+        "payload": {
+          "type": "json"
+        },
+        "idempotency_key": {
+          "type": "string",
+          "index": true,
+          "max_length": 128
+        },
+        "created_at": {
+          "type": "datetime",
+          "index": true
+        }
+      },
+      "writable_fields": [],
+      "allowed_filters": [
+        "record_id",
+        "event_type",
+        "actor_id",
+        "created_at"
+      ],
+      "filter_operators": [
+        "eq",
+        "ne",
+        "gt",
+        "gte",
+        "lt",
+        "lte",
+        "in",
+        "isnull"
+      ],
+      "allowed_sort": [
+        "id",
+        "event_type",
+        "created_at"
+      ],
+      "permissions": {
+        "list": "editor.audit-events.list",
+        "read": "editor.audit-events.read"
+      },
+      "allowed_actions": [
+        "list",
+        "read"
+      ]
+    },
+    {
+      "database": "primary",
+      "table": "editor_policies",
+      "path": "editor/policies",
+      "auto_create": true,
+      "columns": {
+        "id": {
+          "type": "integer",
+          "primary_key": true,
+          "nullable": false
+        },
+        "name": {
+          "type": "string",
+          "nullable": false,
+          "unique": true,
+          "index": true,
+          "max_length": 128
+        },
+        "enabled": {
+          "type": "boolean",
+          "nullable": false,
+          "default": true,
+          "index": true
+        },
+        "version": {
+          "type": "integer",
+          "nullable": false,
+          "default": 1
+        },
+        "rule": {
+          "type": "json",
+          "nullable": false
+        },
+        "created_at": {
+          "type": "datetime",
+          "index": true
+        },
+        "updated_at": {
+          "type": "datetime"
+        }
+      },
+      "writable_fields": [
+        "name",
+        "enabled",
+        "version",
+        "rule",
+        "created_at",
+        "updated_at"
+      ],
+      "allowed_filters": [
+        "name",
+        "enabled",
+        "version"
+      ],
+      "filter_operators": [
+        "eq",
+        "ne",
+        "gt",
+        "gte",
+        "lt",
+        "lte",
+        "in",
+        "isnull"
+      ],
+      "allowed_sort": [
+        "id",
+        "name",
+        "version",
+        "created_at"
+      ],
+      "permissions": {
+        "list": "editor.policies.list",
+        "read": "editor.policies.read",
+        "create": "editor.policies.create",
+        "update": "editor.policies.update",
+        "delete": "editor.policies.delete"
+      }
+    }
+  ]
+}

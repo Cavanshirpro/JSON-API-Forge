@@ -1,0 +1,10 @@
+{
+  "$schema": "../../schemas/manifest.schema.json",
+  "slug": "public-catalog",
+  "name": "Public Catalog",
+  "version": "1.0.0",
+  "api_prefix": "/api/public-catalog/v1",
+  "docs_enabled": true,
+  "audit_enabled": false,
+  "cors_origins": ["*"]
+}

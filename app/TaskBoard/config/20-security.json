@@ -1,0 +1,23 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "security": {
+    "bootstrap_enabled": true,
+    "bootstrap_admin_key": "$env:TASK_BOARD_BOOTSTRAP_ADMIN_KEY",
+    "bootstrap_one_time": true,
+    "allow_query_api_key": false,
+    "allow_websocket_query_api_key": false
+  },
+  "roles": {
+    "admin": {"permissions": ["*"]},
+    "task_user": {
+      "permissions": [
+        "tasks.list",
+        "tasks.read",
+        "tasks.create",
+        "tasks.update",
+        "tasks.delete",
+        "system.meta.read"
+      ]
+    }
+  }
+}

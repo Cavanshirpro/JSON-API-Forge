@@ -1,0 +1,9 @@
+{
+  "$schema": "../../schemas/manifest.schema.json",
+  "slug": "warehouse-grid",
+  "name": "Warehouse Grid",
+  "version": "1.0.0",
+  "api_prefix": "/api/warehouse-grid/v1",
+  "docs_enabled": true,
+  "audit_enabled": true
+}

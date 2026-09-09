@@ -1,0 +1,9 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "databases": {
+    "primary": {
+      "url": "$env:TOURNAMENT_ENGINE_DATABASE_URL:-sqlite+aiosqlite:///./data/tournament-engine.db",
+      "pool_pre_ping": true
+    }
+  }
+}

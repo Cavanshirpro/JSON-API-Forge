@@ -1,0 +1,102 @@
+{
+  "$schema": "../../../schemas/editor-graph.schema.json",
+  "schema_version": 1,
+  "target_document": "config/50-operations.json",
+  "metadata": {
+    "name": "Warehouse Grid transition",
+    "compiler": "json-api-forge-editor"
+  },
+  "nodes": [
+    {
+      "id": "request",
+      "type": "request.input",
+      "title": "Transition request",
+      "x": 0,
+      "y": 0,
+      "properties": {
+        "method": "POST"
+      }
+    },
+    {
+      "id": "policy",
+      "type": "auth.policy",
+      "title": "Scoped authorization",
+      "x": 300,
+      "y": 0,
+      "properties": {
+        "permission": "warehouse.inventory_batches.transition",
+        "public": false
+      }
+    },
+    {
+      "id": "update",
+      "type": "data.mutate",
+      "title": "Update state",
+      "x": 600,
+      "y": 0,
+      "properties": {
+        "sql": "UPDATE warehouse_inventory_batches SET status = :next_status WHERE id = :record_id",
+        "mode": "execute",
+        "params": {
+          "next_status": "$body.next_status",
+          "record_id": "$body.record_id"
+        },
+        "result_name": "transition"
+      }
+    },
+    {
+      "id": "operation",
+      "type": "operation.call",
+      "title": "Forge operation",
+      "x": 900,
+      "y": 0,
+      "properties": {
+        "name": "warehouse.transition",
+        "method": "POST",
+        "database": "primary",
+        "idempotency": true,
+        "summary": "Graph model for the audited transition"
+      }
+    },
+    {
+      "id": "response",
+      "type": "response.output",
+      "title": "Operation result",
+      "x": 1200,
+      "y": 0,
+      "properties": {
+        "status_code": 200
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-1",
+      "from_node": "request",
+      "from_port": "exec",
+      "to_node": "policy",
+      "to_port": "exec"
+    },
+    {
+      "id": "edge-2",
+      "from_node": "policy",
+      "from_port": "exec",
+      "to_node": "update",
+      "to_port": "exec"
+    },
+    {
+      "id": "edge-3",
+      "from_node": "update",
+      "from_port": "exec",
+      "to_node": "operation",
+      "to_port": "exec"
+    },
+    {
+      "id": "edge-4",
+      "from_node": "operation",
+      "from_port": "exec",
+      "to_node": "response",
+      "to_port": "exec"
+    }
+  ]
+}

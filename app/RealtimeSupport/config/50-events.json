@@ -1,0 +1,39 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "event_channels": [
+    {
+      "name": "ticket-updates",
+      "path": "events/ticket-updates",
+      "publish_permission": "support.events.publish",
+      "subscribe_permission": "support.events.subscribe",
+      "websocket_enabled": true,
+      "sse_enabled": true,
+      "max_message_bytes": 16384,
+      "queue_size": 128,
+      "max_websocket_connections": 200,
+      "max_sse_connections": 200,
+      "allowed_origins": ["http://localhost:5173", "http://127.0.0.1:5173"],
+      "heartbeat_seconds": 15,
+      "websocket_message_requests": 60,
+      "websocket_message_window_seconds": 60,
+      "websocket_message_burst": 15
+    }
+  ],
+  "webhook_docs": [
+    {
+      "name": "ticket-status-changed",
+      "method": "POST",
+      "summary": "Suggested payload for downstream ticket automation",
+      "payload_schema": {
+        "type": "object",
+        "required": ["ticket_id", "status"],
+        "additionalProperties": false,
+        "properties": {
+          "ticket_id": {"type": "integer"},
+          "status": {"type": "string"},
+          "assignee": {"type": ["string", "null"]}
+        }
+      }
+    }
+  ]
+}

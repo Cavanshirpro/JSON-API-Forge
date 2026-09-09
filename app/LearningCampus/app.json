@@ -1,0 +1,9 @@
+{
+  "$schema": "../../schemas/manifest.schema.json",
+  "slug": "learning-campus",
+  "name": "Learning Campus",
+  "version": "1.0.0",
+  "api_prefix": "/api/learning-campus/v1",
+  "docs_enabled": true,
+  "audit_enabled": true
+}

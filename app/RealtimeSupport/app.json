@@ -1,0 +1,10 @@
+{
+  "$schema": "../../schemas/manifest.schema.json",
+  "slug": "realtime-support",
+  "name": "Realtime Support",
+  "version": "1.0.0",
+  "api_prefix": "/api/realtime-support/v1",
+  "docs_enabled": true,
+  "audit_enabled": true,
+  "cors_origins": ["http://localhost:5173", "http://127.0.0.1:5173"]
+}

@@ -1,0 +1,20 @@
+# Changelog
+
+## 0.5.1 — 2026-09-06
+
+- Advance the independent examples distribution, installers, generated catalog and workflow assets to v0.5.1.
+- Stream bounded example files into deterministic ZIPs and reject symlinks, case collisions, oversized files and source changes during packaging.
+- Use unique temporary archives and reject output inside source apps; clamp timestamps to the ZIP format's supported range.
+- Stage one-app installs and reject existing targets, dangling links and symlink/junction parents.
+- Add archive regression tests to Actions and make source manifests work identically in Git and extracted source packages.
+
+## 0.5.0 — 2026-08-25
+
+- Split `exampleApps` into an example-only distribution with no copied server, SDK or Editor source.
+- Added 25 named, copy-ready projects covering CRUD, roles, SQL/RPC, idempotency, realtime, media, public data and Editor graph metadata.
+- Added 20 deterministic large-domain systems with four resources, three operations and scoped workflow policies each.
+- Added `EditorPluginRegistry` for bounded reviewed plugin metadata without automatic native-code execution.
+- Added safe Bash and PowerShell one-project installers.
+- Added a deterministic bounded ZIP builder with internal and external SHA-256 inventories.
+- Added Python 3.11–3.14 smoke tests that copy the examples into a separately checked-out `main` runtime.
+- Added native Linux/Windows installer tests, branch-ownership enforcement, manifest verification and CodeQL.

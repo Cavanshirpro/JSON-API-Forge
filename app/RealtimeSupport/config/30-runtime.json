@@ -1,0 +1,29 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "cache": {
+    "enabled": true,
+    "backend": "memory",
+    "default_ttl_seconds": 10,
+    "max_entries": 5000
+  },
+  "rate_limit": {
+    "enabled": true,
+    "backend": "memory",
+    "requests": 240,
+    "window_seconds": 60,
+    "burst": 60,
+    "route_requests": 120,
+    "route_window_seconds": 60,
+    "route_burst": 30
+  },
+  "protection": {
+    "max_request_body_bytes": 1048576,
+    "max_concurrent_requests": 150,
+    "request_timeout_seconds": 20,
+    "trusted_hosts": ["*"]
+  },
+  "realtime": {
+    "backend": "memory",
+    "redis_prefix": "forge:realtime-support"
+  }
+}

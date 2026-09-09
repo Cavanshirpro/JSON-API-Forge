@@ -1,0 +1,9 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "databases": {
+    "primary": {
+      "url": "$env:IOT_CONTROL_CENTER_DATABASE_URL:-sqlite+aiosqlite:///./data/iot-control-center.db",
+      "pool_pre_ping": true
+    }
+  }
+}

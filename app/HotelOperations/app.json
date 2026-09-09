@@ -1,0 +1,9 @@
+{
+  "$schema": "../../schemas/manifest.schema.json",
+  "slug": "hotel-operations",
+  "name": "Hotel Operations",
+  "version": "1.0.0",
+  "api_prefix": "/api/hotel-operations/v1",
+  "docs_enabled": true,
+  "audit_enabled": true
+}

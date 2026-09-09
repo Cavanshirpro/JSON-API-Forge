@@ -1,0 +1,21 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "event_channels": [
+    {
+      "name": "iot-control-center-updates",
+      "path": "events/iot-control-center-updates",
+      "publish_permission": "iot.events.publish",
+      "subscribe_permission": "iot.events.subscribe",
+      "websocket_enabled": true,
+      "sse_enabled": true,
+      "max_message_bytes": 16384,
+      "queue_size": 256,
+      "max_websocket_connections": 200,
+      "max_sse_connections": 200,
+      "heartbeat_seconds": 15,
+      "websocket_message_requests": 60,
+      "websocket_message_window_seconds": 60,
+      "websocket_message_burst": 15
+    }
+  ]
+}

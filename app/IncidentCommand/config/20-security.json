@@ -1,0 +1,57 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "security": {
+    "bootstrap_enabled": true,
+    "bootstrap_admin_key": "$env:INCIDENT_COMMAND_BOOTSTRAP_ADMIN_KEY",
+    "bootstrap_one_time": true,
+    "allow_query_api_key": false,
+    "allow_websocket_query_api_key": false
+  },
+  "roles": {
+    "admin": {
+      "permissions": [
+        "*"
+      ]
+    },
+    "operator": {
+      "permissions": [
+        "incidents.audit-events.create",
+        "incidents.audit-events.delete",
+        "incidents.audit-events.list",
+        "incidents.audit-events.read",
+        "incidents.audit-events.update",
+        "incidents.events.publish",
+        "incidents.events.subscribe",
+        "incidents.incidents.analytics",
+        "incidents.incidents.assign",
+        "incidents.incidents.create",
+        "incidents.incidents.delete",
+        "incidents.incidents.list",
+        "incidents.incidents.read",
+        "incidents.incidents.transition",
+        "incidents.incidents.update",
+        "incidents.policies.create",
+        "incidents.policies.delete",
+        "incidents.policies.list",
+        "incidents.policies.read",
+        "incidents.policies.update",
+        "incidents.workflows.create",
+        "incidents.workflows.delete",
+        "incidents.workflows.list",
+        "incidents.workflows.read",
+        "incidents.workflows.update",
+        "system.meta.read"
+      ]
+    },
+    "auditor": {
+      "permissions": [
+        "incidents.incidents.list",
+        "incidents.incidents.read",
+        "incidents.audit-events.list",
+        "incidents.audit-events.read",
+        "incidents.incidents.analytics",
+        "system.meta.read"
+      ]
+    }
+  }
+}

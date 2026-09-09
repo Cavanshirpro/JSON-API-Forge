@@ -1,0 +1,57 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "security": {
+    "bootstrap_enabled": true,
+    "bootstrap_admin_key": "$env:FINANCE_OPS_BOOTSTRAP_ADMIN_KEY",
+    "bootstrap_one_time": true,
+    "allow_query_api_key": false,
+    "allow_websocket_query_api_key": false
+  },
+  "roles": {
+    "admin": {
+      "permissions": [
+        "*"
+      ]
+    },
+    "operator": {
+      "permissions": [
+        "finance.audit-events.create",
+        "finance.audit-events.delete",
+        "finance.audit-events.list",
+        "finance.audit-events.read",
+        "finance.audit-events.update",
+        "finance.batches.analytics",
+        "finance.batches.assign",
+        "finance.batches.create",
+        "finance.batches.delete",
+        "finance.batches.list",
+        "finance.batches.read",
+        "finance.batches.transition",
+        "finance.batches.update",
+        "finance.events.publish",
+        "finance.events.subscribe",
+        "finance.policies.create",
+        "finance.policies.delete",
+        "finance.policies.list",
+        "finance.policies.read",
+        "finance.policies.update",
+        "finance.workflows.create",
+        "finance.workflows.delete",
+        "finance.workflows.list",
+        "finance.workflows.read",
+        "finance.workflows.update",
+        "system.meta.read"
+      ]
+    },
+    "auditor": {
+      "permissions": [
+        "finance.batches.list",
+        "finance.batches.read",
+        "finance.audit-events.list",
+        "finance.audit-events.read",
+        "finance.batches.analytics",
+        "system.meta.read"
+      ]
+    }
+  }
+}

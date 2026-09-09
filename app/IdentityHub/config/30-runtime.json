@@ -1,0 +1,31 @@
+{
+  "$schema": "../../../schemas/fragment.schema.json",
+  "cache": {
+    "enabled": true,
+    "backend": "memory",
+    "default_ttl_seconds": 20,
+    "max_entries": 10000
+  },
+  "rate_limit": {
+    "enabled": true,
+    "backend": "memory",
+    "requests": 300,
+    "window_seconds": 60,
+    "burst": 75,
+    "route_requests": 120,
+    "route_window_seconds": 60,
+    "route_burst": 30
+  },
+  "protection": {
+    "max_request_body_bytes": 2097152,
+    "max_concurrent_requests": 150,
+    "request_timeout_seconds": 20,
+    "trusted_hosts": [
+      "*"
+    ]
+  },
+  "realtime": {
+    "backend": "memory",
+    "redis_prefix": "forge:identity-hub"
+  }
+}

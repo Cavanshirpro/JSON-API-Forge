@@ -52,7 +52,11 @@ copy_dependencies() {
   ' | while IFS= read -r library; do
     case "$(basename "$library")" in
       libQt6*|libicu*|libxkbcommon*|libpcre2-16*|libdouble-conversion*|libmd4c*|libb2*)
-        cp -L "$library" "$stage/lib/$(basename "$library")"
+        # A staged plugin's RPATH may already resolve to our bundled copy.
+        destination="$stage/lib/$(basename "$library")"
+        if [[ ! "$library" -ef "$destination" ]]; then
+          cp -L "$library" "$destination"
+        fi
         ;;
     esac
   done

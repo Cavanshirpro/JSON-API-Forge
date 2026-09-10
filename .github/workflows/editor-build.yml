@@ -123,8 +123,10 @@ jobs:
           for ifw_config in ifw_configs:
               if ifw_config.tag != "Installer" or ifw_config.findtext("Version") != "0.5.1":
                   raise SystemExit("Qt IFW configuration identity/version mismatch")
-              if ifw_config.findtext("InstallerWindowIcon") == ifw_config.findtext("Logo"):
-                  raise SystemExit("Qt IFW window icon and logo must use distinct resource names")
+              if not ifw_config.findtext("InstallerWindowIcon"):
+                  raise SystemExit("Qt IFW window icon must be present")
+              if any(ifw_config.find(name) is not None for name in ("Logo", "Banner", "Watermark", "Background", "PageListPixmap")):
+                  raise SystemExit("Large QWizard pixmaps must not be added to the installer UI")
           if ifw_package.findtext("Name") != "dev.jsonapiforge.editor":
               raise SystemExit("Qt IFW component identity mismatch")
           if not (ifw_package.findtext("Version") or "").startswith("0.5.1-"):
@@ -154,6 +156,7 @@ jobs:
               raise SystemExit(f"symlinks are not allowed in Editor source: {links}")
           PY
           bash -n editor/packaging/qtifw/build-installer.sh
+          python -m unittest discover -s editor/tests -p "test_packaging.py" -v
           python scripts/check_manifest.py
           git diff --check
 
@@ -209,7 +212,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y \
-            file libxcb-cursor0 ninja-build qt6-base-dev qt6-base-dev-tools zip
+            file libtiff6 libxcb-cursor0 ninja-build qt6-base-dev qt6-base-dev-tools zip
           # Qt WebEngine is optional on architectures where Ubuntu does not
           # publish the package; the Editor keeps its external-browser fallback.
           sudo apt-get install --no-install-recommends -y qt6-webengine-dev || \
@@ -255,7 +258,7 @@ jobs:
             --accept-licenses --default-answer --confirm-command install
           binary_creator=$(find "$ifw_root" -type f -name binarycreator -perm -111 -print -quit)
           test -n "$binary_creator"
-          dirname "$binary_creator" >> "$GITHUB_PATH"
+          bash editor/packaging/qtifw/prepare-linux-tools.sh "$binary_creator" >> "$GITHUB_PATH"
       - name: Install verified official Qt IFW on Windows
         if: runner.os == 'Windows'
         shell: pwsh
@@ -289,18 +292,19 @@ jobs:
           mount_point="${{ runner.temp }}/qt-ifw-dmg"
           mkdir -p "$mount_point"
           hdiutil attach -readonly -nobrowse -mountpoint "$mount_point" "$installer"
-          cleanup_mount() { hdiutil detach "$mount_point" >/dev/null 2>&1 || true; }
+          cleanup_mount() { bash editor/packaging/qtifw/detach-dmg.sh "$mount_point"; }
           trap cleanup_mount EXIT
           ifw_installer=$(find "$mount_point" -path '*/Contents/MacOS/*' -type f -perm -111 -print -quit)
           test -n "$ifw_installer"
           ifw_root="${{ runner.temp }}/qt-ifw"
           QT_QPA_PLATFORM=offscreen "$ifw_installer" --root "$ifw_root" \
             --accept-licenses --default-answer --confirm-command install
-          hdiutil detach "$mount_point"
-          trap - EXIT
           binary_creator=$(find "$ifw_root" -type f -name binarycreator -perm -111 -print -quit)
           test -n "$binary_creator"
+          "$binary_creator" --help
           dirname "$binary_creator" >> "$GITHUB_PATH"
+          cleanup_mount
+          trap - EXIT
       - name: Install Qt on macOS
         if: runner.os == 'macOS'
         uses: jurplel/install-qt-action/action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730 # v4.3.1, direct Node 24 action
@@ -361,6 +365,13 @@ jobs:
           bash editor/packaging/qtifw/build-installer.sh stage "artifacts/$installer" linux
           chmod 0755 "artifacts/$installer"
           file "artifacts/$installer" | grep -E 'executable|ELF'
+          installed="${{ runner.temp }}/editor-installed-${{ matrix.artifact }}"
+          QT_QPA_PLATFORM=offscreen "artifacts/$installer" --root "$installed" \
+            --accept-licenses --default-answer --confirm-command install
+          test -x "$installed/bin/JSON-API-Forge-Editor"
+          QT_QPA_PLATFORM=offscreen "$installed/json-api-forge-editor" \
+            --window-size 1024x640 --screenshot "artifacts/editor-installed-${{ matrix.artifact }}.png"
+          test -s "artifacts/editor-installed-${{ matrix.artifact }}.png"
           (cd artifacts && sha256sum "$archive" "$installer" > SHA256SUMS)
           (cd artifacts && sha256sum "$archive" > "$archive.sha256")
           (cd artifacts && sha256sum "$installer" > "$installer.sha256")
@@ -396,6 +407,14 @@ jobs:
           ./editor/packaging/qtifw/build-installer.ps1 -StageDir stage -OutputFile $outPath
           $installer = Split-Path -Leaf $outPath
           if ((Get-Item "artifacts/$installer").Length -lt 1000000) { throw "Qt IFW installer appears truncated" }
+          $installed = Join-Path $env:RUNNER_TEMP "editor-installed-${{ matrix.artifact }}"
+          $installProcess = Start-Process -FilePath $outPath -Wait -PassThru -ArgumentList @('--root', ('"' + $installed + '"'), '--accept-licenses', '--default-answer', '--confirm-command', 'install')
+          if ($installProcess.ExitCode -ne 0) { throw "Generated installer failed: $($installProcess.ExitCode)" }
+          $installedExe = Join-Path $installed "bin/JSON-API-Forge-Editor.exe"
+          if (-not (Test-Path $installedExe -PathType Leaf)) { throw "Installer did not install the Editor" }
+          $installedScreenshot = Join-Path (Resolve-Path artifacts) "editor-installed-${{ matrix.artifact }}.png"
+          $installedProcess = Start-Process -FilePath $installedExe -Wait -PassThru -ArgumentList @('--window-size', '1024x640', '--screenshot', ('"' + $installedScreenshot + '"'))
+          if ($installedProcess.ExitCode -ne 0 -or -not (Test-Path $installedScreenshot -PathType Leaf)) { throw "Installed Editor smoke test failed" }
           foreach ($name in @($archive, $installer)) {
             $hash = (Get-FileHash "artifacts/$name" -Algorithm SHA256).Hash.ToLowerInvariant()
             [IO.File]::WriteAllText(

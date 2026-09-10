@@ -14,6 +14,9 @@ $ErrorActionPreference = "Stop"
 $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot "../../..")).Path
 $stagePath = (Resolve-Path $StageDir).Path
 $outputPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputFile)
+if (-not (Test-Path -LiteralPath (Join-Path $stagePath "bin/JSON-API-Forge-Editor.exe") -PathType Leaf)) {
+    throw "StageDir must contain bin/JSON-API-Forge-Editor.exe; refusing an empty installer."
+}
 $outputParent = Split-Path -Parent $outputPath
 New-Item -ItemType Directory -Force $outputParent | Out-Null
 
@@ -26,8 +29,6 @@ try {
     New-Item -ItemType Directory -Force $configRoot, $metaRoot, $dataRoot | Out-Null
     Copy-Item (Join-Path $PSScriptRoot "config/config.xml") -Destination $configRoot
     Copy-Item (Join-Path $repositoryRoot "editor/resources/forge-editor.ico") -Destination $configRoot
-    Copy-Item (Join-Path $repositoryRoot "editor/resources/brand-mark-transparent.png") `
-        -Destination (Join-Path $configRoot "installer-logo.png")
     Copy-Item (Join-Path $repositoryRoot "editor/resources/brand-mark-transparent.png") `
         -Destination (Join-Path $configRoot "installer-window-icon.png")
     Copy-Item (Join-Path $PSScriptRoot "packages/dev.jsonapiforge.editor/meta/package.xml") -Destination $metaRoot

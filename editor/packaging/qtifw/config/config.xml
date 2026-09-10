@@ -7,7 +7,7 @@
     <ProductUrl>https://github.com/YoungLionOrganization/JSON-API-Forge</ProductUrl>
     <InstallerApplicationIcon>forge-editor</InstallerApplicationIcon>
     <InstallerWindowIcon>installer-window-icon.png</InstallerWindowIcon>
-    <Logo>installer-logo.png</Logo>
+    <!-- No header pixmap: QWizard does not fit large logos to the page. -->
     <WizardStyle>Modern</WizardStyle>
     <WizardDefaultWidth>760</WizardDefaultWidth>
     <WizardDefaultHeight>540</WizardDefaultHeight>

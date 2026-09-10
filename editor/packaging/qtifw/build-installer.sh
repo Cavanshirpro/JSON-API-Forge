@@ -18,6 +18,10 @@ mkdir -p "$output_parent"
 output_parent=$(CDPATH= cd -- "$output_parent" && pwd)
 output="$output_parent/$(basename -- "$output")"
 binarycreator=$(command -v "$binarycreator")
+case "$platform" in
+  linux) test -x "$stage/bin/JSON-API-Forge-Editor"; test -x "$stage/json-api-forge-editor" ;;
+  macos) test -x "$stage/JSON-API-Forge-Editor.app/Contents/MacOS/JSON-API-Forge-Editor" ;;
+esac
 
 work_root=$(mktemp -d)
 trap 'rm -rf -- "$work_root"' EXIT
@@ -27,7 +31,6 @@ data_root="$work_root/packages/dev.jsonapiforge.editor/data"
 mkdir -p "$config_root" "$meta_root" "$data_root"
 
 cp "$repository_root/editor/packaging/qtifw/config/config-$platform.xml" "$config_root/config.xml"
-cp "$repository_root/editor/resources/brand-mark-transparent.png" "$config_root/installer-logo.png"
 cp "$repository_root/editor/resources/brand-mark-transparent.png" "$config_root/installer-window-icon.png"
 if [[ $platform == linux ]]; then
   cp "$repository_root/editor/resources/logo.png" "$config_root/forge-editor.png"

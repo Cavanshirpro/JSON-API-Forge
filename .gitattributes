@@ -6,3 +6,5 @@
 *.webp binary
 *.ico binary
 *.zip binary
+# Keep the standalone Windows launcher byte-for-byte identical to its manifest.
+*.bat -text
